@@ -11,6 +11,12 @@ lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
 - Banned turns count as a 90 s detour, so bans are a trade-off, not a free win.
 - Best stars are saved in your browser, and each level unlocks when the previous one has a star.
 
+**Phase 4: your own junctions.** In the sandbox:
+
+- **Edit shape** lets you drag a road's handle to turn it, press **+** to add a road in any gap wide enough, or **×** to remove one. Junctions have 2–6 roads, kept at least 30° apart, and every change applies under running traffic.
+- **Start over** offers six templates: crossroad, skewed, T, Y, 5-way, 6-way.
+- **My designs** saves designs in your browser, and can export one to a `.traffic.json` file or import it again on another computer.
+
 **Earlier phases (2a and up):** There's a sandbox you can edit while the traffic runs:
 
 - signals and the full signal plan
@@ -59,6 +65,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/sim/safety.ts` | Collision checks used by the tests. |
 | `src/network/roundabout.ts` | Roundabout geometry (ring size, tangent entry and exit curves, flared curbs) and the ring's rules. |
 | `src/game/` | Levels (`levels.ts`), what designs cost (`costs.ts`) and how they're scored (`score.ts`). |
+| `src/scenarios/shape.ts`, `storage.ts` | Adding, turning and removing roads (keeping the scenario consistent), and saving, exporting and importing designs. |
 | `src/scenarios/patterns.ts` | Time-of-day patterns, tidal flows, and the maths to look a factor up for any hour. |
 | `src/sim/evaluate.ts` | Headless test runs and paired statistics for the fair test. `src/app/eval.worker.ts` and `fairTest.ts` spread the runs over a pool of workers. |
 | `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |

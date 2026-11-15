@@ -1,6 +1,7 @@
 import type { LegSpec } from '../../core/types';
 import { legColor } from '../../render/theme';
 import { crossingOf, setCrossing, toggleBanned, toggleMajor, type CrossingChoice } from '../../scenarios/edit';
+import { canRemoveLeg, removeLeg } from '../../scenarios/shape';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
 import { Segmented } from './Segmented';
@@ -101,6 +102,17 @@ export function LegInspector() {
           <input type="checkbox" checked={!!leg.slipLane} onChange={(e) => update(e.target.checked ? 'side road built' : 'side road removed', (l) => (l.slipLane = e.target.checked))} />
           Side road: turn into the next road without entering the junction
         </label>
+        )}
+        {!rules.inLevel && canRemoveLeg(scenario) && (
+          <button
+            className="link danger"
+            onClick={() => {
+              selectLeg(null);
+              edit(`Removed road ${leg.id}`, (d) => removeLeg(d, leg.id));
+            }}
+          >
+            Remove this road
+          </button>
         )}
         {scenario.control.type === 'priority' && rules.controls.includes('major') && (
           <label className="toggle">

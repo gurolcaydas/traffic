@@ -1265,3 +1265,129 @@ input[readonly] {
     display: none;
   }
 }
+
+/* Shape editing on the map */
+
+.shape-editor {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.shape-guides {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.shape-guides .guide {
+  stroke: var(--focus);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+}
+
+.shape-handle-wrap {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: auto;
+}
+
+.shape-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 2px solid;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  cursor: grab;
+  touch-action: none;
+  font-size: 13px;
+}
+
+.shape-handle:active {
+  cursor: grabbing;
+}
+
+.shape-handle .num {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.shape-remove {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--bad);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.shape-add {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px dashed var(--focus);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--focus);
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.shape-add:hover {
+  background: var(--surface);
+}
+
+.shape-toggle {
+  margin: 0 0 10px;
+  flex-wrap: wrap;
+}
+
+/* My designs */
+
+input.text {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+}
+
+.design-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+
+.design-list li {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-areas: 'name open del' 'meta open del';
+  gap: 0 10px;
+  align-items: center;
+  padding: 6px 0;
+  border-top: 1px solid var(--border);
+}
+
+.design-name {
+  grid-area: name;
+  font-weight: 500;
+}
+
+.design-list .hint {
+  grid-area: meta;
+}

@@ -1,6 +1,6 @@
 import type { ControlSpec, DriveSide, LegSpec, Scenario, SignalPhase } from '../core/types';
 
-export type Shape = 'cross' | 't' | 'y' | 'five';
+export type Shape = 'cross' | 'skewed' | 't' | 'y' | 'five' | 'six';
 export type ControlChoice = 'right' | 'major' | 'signals' | 'roundabout';
 export type CrosswalkChoice = 'none' | 'zebra' | 'signal';
 
@@ -17,9 +17,11 @@ export interface Setup {
 
 export const SHAPES: Record<Shape, { label: string; angles: number[] }> = {
   cross: { label: 'Crossroad', angles: [0, 90, 180, 270] },
+  skewed: { label: 'Skewed', angles: [0, 65, 180, 245] },
   t: { label: 'T-junction', angles: [0, 180, 270] },
   y: { label: 'Y-junction', angles: [90, 210, 330] },
   five: { label: '5-way', angles: [0, 70, 145, 215, 290] },
+  six: { label: '6-way', angles: [0, 60, 120, 180, 240, 300] },
 };
 
 export const DEFAULT_SETUP: Setup = {

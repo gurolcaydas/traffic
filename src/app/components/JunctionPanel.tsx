@@ -24,6 +24,8 @@ export function JunctionPanel() {
   const newJunction = useApp((s) => s.newJunction);
   const setup = currentSetup();
   const rules = useRules();
+  const editShape = useApp((s) => s.editShape);
+  const setEditShape = useApp((s) => s.setEditShape);
 
   // Values shown for "all legs" controls: the shared value, or nothing if legs differ.
   const lanes = scenario.legs.every((l) => l.lanesIn === scenario.legs[0]!.lanesIn) ? scenario.legs[0]!.lanesIn : -1;
@@ -40,6 +42,15 @@ export function JunctionPanel() {
         <h2>Junction</h2>
         <span className="hint">Changes apply while traffic runs</span>
       </header>
+
+      {!rules.inLevel && (
+        <div className="row gap shape-toggle">
+          <button className={`btn ${editShape ? 'primary' : ''}`} aria-pressed={editShape} onClick={() => setEditShape(!editShape)}>
+            ✎ {editShape ? 'Done editing shape' : 'Edit shape'}
+          </button>
+          {editShape && <span className="hint">Drag a ⟲ handle to turn a road, + to add one, × to remove one.</span>}
+        </div>
+      )}
 
       <div className="field">
         <label>Control</label>

@@ -46,6 +46,8 @@ interface AppState {
   /** Best stars per level id. */
   progress: Record<string, number>;
   showLevels: boolean;
+  /** On-map shape editing (sandbox only). */
+  editShape: boolean;
   /** The junction being played. Everything else is derived from it. */
   scenario: Scenario;
   /** Designs the fair test can compare against: as first built, just before the latest edit, or pinned. */
@@ -73,7 +75,10 @@ interface AppState {
   newJunction: (patch: Partial<Setup>) => void;
   startLevel: (id: string) => void;
   playSandbox: () => void;
+  /** Open a saved or imported design in the sandbox (the traffic restarts). */
+  loadDesign: (scenario: Scenario) => void;
   setShowLevels: (show: boolean) => void;
+  setEditShape: (on: boolean) => void;
   recordResult: (result: LevelResult) => void;
   /** Change the layout while traffic keeps running. `label` describes the change for the comparison card. */
   edit: (label: string, change: (draft: Scenario) => void) => void;
@@ -101,6 +106,7 @@ export const useApp = create<AppState>((set, get) => ({
   levelResult: null,
   progress: loadProgress(),
   showLevels: false,
+  editShape: false,
   scenario: initial,
   originalDesign: initial,
   designBeforeLastEdit: null,
@@ -125,6 +131,7 @@ export const useApp = create<AppState>((set, get) => ({
     const scenario = structuredClone(level.scenario);
     set({
       mode: { kind: 'level', levelId: id },
+      editShape: false,
       levelResult: null,
       showLevels: false,
       scenario,
@@ -143,7 +150,25 @@ export const useApp = create<AppState>((set, get) => ({
     set({ mode: { kind: 'sandbox' }, levelResult: null, showLevels: false });
     get().newJunction({});
   },
+  loadDesign: (loaded) => {
+    const scenario = structuredClone(loaded);
+    set({
+      mode: { kind: 'sandbox' },
+      levelResult: null,
+      scenario,
+      originalDesign: scenario,
+      designBeforeLastEdit: null,
+      pinnedDesign: null,
+      layoutVersion: get().layoutVersion + 1,
+      selectedLeg: null,
+      baseline: null,
+      lastEdit: null,
+      metrics: null,
+      timeOfDay: scenario.demand.pattern?.startHour ?? null,
+    });
+  },
   setShowLevels: (showLevels) => set({ showLevels }),
+  setEditShape: (editShape) => set({ editShape }),
   recordResult: (result) => {
     const mode = get().mode;
     if (mode.kind !== 'level') return;
