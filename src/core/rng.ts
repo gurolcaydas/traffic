@@ -29,3 +29,17 @@ export class Rng {
     return items[Math.floor(this.next() * items.length)]!;
   }
 }
+
+/**
+ * A generator for one named stream within a seeded run, e.g. `streamRng(seed, 'veh:1>3')`.
+ * Streams don't share state, so what happens in one never shifts the numbers another one sees.
+ */
+export function streamRng(seed: number, name: string): Rng {
+  // FNV-1a over the name, mixed with the seed.
+  let h = 0x811c9dc5 ^ (seed >>> 0);
+  for (let i = 0; i < name.length; i++) {
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return new Rng(h >>> 0);
+}

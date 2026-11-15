@@ -7,7 +7,9 @@ import {
   setAllCrossings,
   setAllLanes,
   setControl,
+  sideRoadCandidates,
   toggleFlyover,
+  toggleSideRoad,
   type CrossingChoice,
 } from '../../scenarios/edit';
 import { currentSetup, useApp } from '../store';
@@ -27,6 +29,8 @@ export function JunctionPanel() {
     ? crossingOf(scenario, scenario.legs[0]!.id)
     : ('mixed' as const);
   const flyovers = flyoverCandidates(scenario);
+  const sideRoads = sideRoadCandidates(scenario);
+  const turnGlyph = scenario.driveSide === 'right' ? '↱' : '↰';
 
   return (
     <section className="panel">
@@ -73,6 +77,26 @@ export function JunctionPanel() {
         />
       </div>
 
+      <div className="field">
+        <label>Side roads (turn into the next road without entering the junction)</label>
+        <div className="chips">
+          {sideRoads.map(({ from, to }) => {
+            const on = !!scenario.legs.find((l) => l.id === from)?.slipLane;
+            return (
+              <button
+                key={from}
+                className={`chip ${on ? 'on' : ''}`}
+                aria-pressed={on}
+                title={`Side road from ${from} into ${to}`}
+                onClick={() => edit(`${on ? 'Removed' : 'Built'} side road ${from}→${to}`, (d) => toggleSideRoad(d, from))}
+              >
+                {from} {turnGlyph} {to}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {flyovers.length > 0 && (
         <div className="field">
           <label>Flyover (straight-through traffic on a bridge)</label>
@@ -94,7 +118,7 @@ export function JunctionPanel() {
         </div>
       )}
 
-      <p className="hint tip">Click a leg on the map to change its lanes, crossing, slip lane or allowed turns.</p>
+      <p className="hint tip">Click a leg on the map to change its lanes, crossing or allowed turns.</p>
 
       <details className="start-over">
         <summary>Start over with a new junction</summary>

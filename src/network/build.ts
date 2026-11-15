@@ -160,7 +160,7 @@ function flyoverPartners(scenario: Scenario): Map<string, string> {
 }
 
 /** How far before the stop line a slip lane peels away from the main road. */
-const SLIP_SETBACK = 16;
+const SLIP_SETBACK = 30;
 /** Painted buffer between the main road and the slip lane, widening into the corner island. */
 const SLIP_BUFFER = 1;
 

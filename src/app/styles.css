@@ -604,6 +604,8 @@ input[type='number']::-webkit-inner-spin-button {
 
 .toggle {
   display: flex !important;
+  /* .field > label spreads its children apart; a checkbox row keeps them together. */
+  justify-content: flex-start !important;
   align-items: flex-start;
   gap: 8px;
   color: var(--text) !important;
@@ -791,4 +793,74 @@ body {
   .clock {
     display: none;
   }
+}
+
+/* Fair test */
+
+.progress {
+  flex: 1;
+  height: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--text);
+  transition: width 0.2s;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.fair-result {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.fair-result.stale {
+  opacity: 0.6;
+}
+
+.fair-result table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin: 6px 0;
+}
+
+.fair-result th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-2);
+  padding: 3px 4px 3px 0;
+}
+
+.fair-result td {
+  padding: 3px 4px 3px 0;
+}
+
+.fair-result td.delta {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.verdict {
+  margin: 0;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.verdict.better {
+  color: var(--good);
+}
+
+.verdict.worse {
+  color: var(--bad);
 }

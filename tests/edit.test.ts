@@ -8,9 +8,11 @@ import {
   phaseMovements,
   setAllCrossings,
   setControl,
+  sideRoadCandidates,
   toggleBanned,
   toggleFlyover,
   toggleMovementInPhase,
+  toggleSideRoad,
 } from '../src/scenarios/edit';
 import { crossroad } from '../src/scenarios/templates';
 
@@ -84,5 +86,29 @@ describe('edit operations', () => {
     expect(s.legs[0]!.banned).toEqual(['4']);
     toggleBanned(s, '1', '4');
     expect(s.legs[0]!.banned).toEqual([]);
+  });
+});
+
+describe('side roads', () => {
+  it('offers one side road per corner, towards the near-side neighbour', () => {
+    expect(sideRoadCandidates(crossroad())).toEqual([
+      { from: '1', to: '2' },
+      { from: '2', to: '3' },
+      { from: '3', to: '4' },
+      { from: '4', to: '1' },
+    ]);
+    expect(sideRoadCandidates(crossroad({ driveSide: 'left' }))[0]).toEqual({ from: '1', to: '4' });
+  });
+
+  it('matches the turn the network routes through the slip lane', () => {
+    for (const driveSide of ['right', 'left'] as const) {
+      const s = crossroad({ driveSide });
+      for (const { from, to } of sideRoadCandidates(s)) {
+        toggleSideRoad(s, from);
+        const net = buildNetwork(s);
+        expect(net.connectors.find((c) => c.kind === 'slip' && c.from === from)?.to).toBe(to);
+        toggleSideRoad(s, from);
+      }
+    }
   });
 });

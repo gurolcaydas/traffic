@@ -57,6 +57,19 @@ export function toggleMajor(s: Scenario, leg: LegId) {
   s.control = { type: 'priority', major: [...major] };
 }
 
+/** Each leg's possible side road (slip lane): to its neighbour on the near side. */
+export function sideRoadCandidates(s: Scenario): Array<{ from: LegId; to: LegId }> {
+  if (s.legs.length < 2) return [];
+  const sorted = [...s.legs].sort((a, b) => norm360(a.angle) - norm360(b.angle));
+  const side = s.driveSide === 'right' ? 1 : -1;
+  return sorted.map((leg, i) => ({ from: leg.id, to: sorted[(i + side + sorted.length) % sorted.length]!.id }));
+}
+
+export function toggleSideRoad(s: Scenario, from: LegId) {
+  const leg = s.legs.find((l) => l.id === from)!;
+  leg.slipLane = !leg.slipLane;
+}
+
 /** Pairs of roughly opposite legs that could carry a flyover. */
 export function flyoverCandidates(s: Scenario): Array<[LegId, LegId]> {
   const out: Array<[LegId, LegId]> = [];
@@ -183,6 +196,8 @@ function allPairs(s: Scenario): Array<[LegId, LegId]> {
   for (let i = 0; i < s.legs.length; i++) for (let j = i + 1; j < s.legs.length; j++) out.push([s.legs[i]!.id, s.legs[j]!.id]);
   return out;
 }
+
+const norm360 = (a: number) => ((a % 360) + 360) % 360;
 
 const angleDiff = (a: number, b: number) => {
   const d = Math.abs((((a - b) % 360) + 360) % 360);

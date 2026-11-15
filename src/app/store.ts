@@ -18,6 +18,10 @@ const MIN_BASELINE_WINDOW = 60;
 interface AppState {
   /** The junction being played. Everything else is derived from it. */
   scenario: Scenario;
+  /** Designs the fair test can compare against: as first built, just before the latest edit, or pinned. */
+  originalDesign: Scenario;
+  designBeforeLastEdit: Scenario | null;
+  pinnedDesign: { scenario: Scenario; label: string } | null;
   /** Bumped for a brand-new junction: the traffic restarts. */
   layoutVersion: number;
   /** Bumped for an edit: the running simulation swaps in the new layout. */
@@ -39,6 +43,7 @@ interface AppState {
   setPedDemand: (leg: string, pedPerHour: number) => void;
   scaleDemand: (factor: number) => void;
   selectLeg: (leg: string | null) => void;
+  pinDesign: () => void;
   setPlaying: (playing: boolean) => void;
   setSpeed: (speed: number) => void;
   restart: () => void;
@@ -47,8 +52,13 @@ interface AppState {
 
 let setup: Setup = DEFAULT_SETUP;
 
+const initial = buildScenario(DEFAULT_SETUP, defaultDemand(DEFAULT_SETUP));
+
 export const useApp = create<AppState>((set, get) => ({
-  scenario: buildScenario(DEFAULT_SETUP, defaultDemand(DEFAULT_SETUP)),
+  scenario: initial,
+  originalDesign: initial,
+  designBeforeLastEdit: null,
+  pinnedDesign: null,
   layoutVersion: 0,
   editVersion: 0,
   selectedLeg: null,
@@ -65,8 +75,12 @@ export const useApp = create<AppState>((set, get) => ({
     const shapeChanged = patch.shape !== undefined && patch.shape !== setup.shape;
     setup = { ...setup, ...patch };
     const demand = shapeChanged ? defaultDemand(setup) : get().scenario.demand;
+    const scenario = buildScenario(setup, demand);
     set({
-      scenario: buildScenario(setup, demand),
+      scenario,
+      originalDesign: scenario,
+      designBeforeLastEdit: null,
+      pinnedDesign: null,
       layoutVersion: get().layoutVersion + 1,
       selectedLeg: null,
       baseline: null,
@@ -80,7 +94,14 @@ export const useApp = create<AppState>((set, get) => ({
     const m = get().metrics;
     // Keep the older baseline if the last change hasn't run long enough to judge.
     const baseline = m && m.window >= MIN_BASELINE_WINDOW ? { label: get().lastEdit ?? 'Before', metrics: m } : get().baseline;
-    set({ scenario: draft, editVersion: get().editVersion + 1, baseline, lastEdit: label, metrics: null });
+    set({
+      scenario: draft,
+      designBeforeLastEdit: get().scenario,
+      editVersion: get().editVersion + 1,
+      baseline,
+      lastEdit: label,
+      metrics: null,
+    });
   },
   setVehicleDemand: (from, to, vehPerHour) => {
     const s = get().scenario;
@@ -102,9 +123,12 @@ export const useApp = create<AppState>((set, get) => ({
     set({ scenario: { ...s, demand: { ...s.demand, vehicles } } });
   },
   selectLeg: (leg) => set({ selectedLeg: leg }),
+  pinDesign: () => set({ pinnedDesign: { scenario: get().scenario, label: get().lastEdit ?? 'Original layout' } }),
   setPlaying: (playing) => set({ playing }),
   setSpeed: (speed) => set({ speed }),
-  restart: () => set({ layoutVersion: get().layoutVersion + 1, metrics: null, baseline: null, lastEdit: null }),
+  // Restart clears the traffic but keeps the design, so it also becomes the new "original".
+  restart: () =>
+    set({ layoutVersion: get().layoutVersion + 1, metrics: null, baseline: null, lastEdit: null, originalDesign: get().scenario, designBeforeLastEdit: null }),
   setTheme: (theme) => set({ theme }),
 }));
 

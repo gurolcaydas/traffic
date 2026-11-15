@@ -1,4 +1,4 @@
-import { Rng } from '../core/rng';
+import { streamRng, type Rng } from '../core/rng';
 import type { LegId, Scenario } from '../core/types';
 import { buildNetwork } from '../network/build';
 import { movementKey, type ConflictRef, type Connector, type Network } from '../network/network';
@@ -44,9 +44,12 @@ export interface Pedestrian {
   arrivalTime: number;
 }
 
+/** A vehicle that has arrived but not yet found room on the map. Its traits are fixed on arrival. */
 interface PendingVehicle {
   to: LegId;
   arrivalTime: number;
+  length: number;
+  speedFactor: number;
 }
 
 const DT_DEFAULT = 0.1;
@@ -79,7 +82,14 @@ export class Simulation {
   pedestrians: Pedestrian[] = [];
   clock: SignalClock | null = null;
 
-  private rng: Rng;
+  /**
+   * One random stream per traffic flow, keyed by name. Arrivals and vehicle traits come only from
+   * these, and only at arrival time, so two different designs run with the same seed see exactly
+   * the same traffic: the basis of fair comparisons.
+   */
+  private streams = new Map<string, Rng>();
+  /** Optional record of every arrival, for tests: [time, from, to]. */
+  arrivalLog: Array<[number, LegId, LegId]> | null = null;
   private idm: IdmParams = DEFAULT_IDM;
   private nextId = 1;
   private nextVehicleArrival: number[];
@@ -97,10 +107,10 @@ export class Simulation {
     this.scenario = scenario;
     this.network = buildNetwork(scenario);
     this.dt = opts.dt ?? DT_DEFAULT;
-    this.rng = new Rng(scenario.seed);
+
     for (const leg of scenario.legs) this.backlog.set(leg.id, []);
-    this.nextVehicleArrival = scenario.demand.vehicles.map((d) => this.rng.exponential(d.vehPerHour / 3600));
-    this.nextPedArrival = scenario.demand.pedestrians.map((d) => this.rng.exponential(d.pedPerHour / 3600));
+    this.nextVehicleArrival = scenario.demand.vehicles.map((d) => this.vehStream(d).exponential(d.vehPerHour / 3600));
+    this.nextPedArrival = scenario.demand.pedestrians.map((d) => this.pedStream(d).exponential(d.pedPerHour / 3600));
     this.metrics = new MetricsCollector(scenario.legs.map((l) => l.id));
     this.index();
   }
@@ -131,8 +141,8 @@ export class Simulation {
   /** Change traffic demand on the fly. Vehicles already on the map or waiting to enter are kept. */
   setDemand(demand: Scenario['demand']) {
     this.scenario = { ...this.scenario, demand };
-    this.nextVehicleArrival = demand.vehicles.map((d) => this.time + this.rng.exponential(d.vehPerHour / 3600));
-    this.nextPedArrival = demand.pedestrians.map((d) => this.time + this.rng.exponential(d.pedPerHour / 3600));
+    this.nextVehicleArrival = demand.vehicles.map((d) => this.time + this.vehStream(d).exponential(d.vehPerHour / 3600));
+    this.nextPedArrival = demand.pedestrians.map((d) => this.time + this.pedStream(d).exponential(d.pedPerHour / 3600));
   }
 
   resetMetrics() {
@@ -280,7 +290,9 @@ export class Simulation {
     if (pushedOff.length === 0) return;
     const off = new Set(pushedOff);
     this.vehicles = this.vehicles.filter((v) => !off.has(v));
-    for (const veh of pushedOff) this.backlog.get(veh.from)?.unshift({ to: veh.to, arrivalTime: veh.arrivalTime });
+    for (const veh of pushedOff) {
+      this.backlog.get(veh.from)?.unshift({ to: veh.to, arrivalTime: veh.arrivalTime, length: veh.length, speedFactor: veh.speedFactor });
+    }
   }
 
   /** World position and heading of a vehicle's centre, for rendering. */
@@ -299,39 +311,65 @@ export class Simulation {
 
   // --- demand -------------------------------------------------------------
 
+  private stream(name: string): Rng {
+    let rng = this.streams.get(name);
+    if (!rng) {
+      rng = streamRng(this.scenario.seed, name);
+      this.streams.set(name, rng);
+    }
+    return rng;
+  }
+
+  private vehStream(d: { from: LegId; to: LegId }) {
+    return this.stream(`veh:${d.from}>${d.to}`);
+  }
+
+  private pedStream(d: { leg: LegId }) {
+    return this.stream(`ped:${d.leg}`);
+  }
+
   private arrive() {
     const { vehicles, pedestrians } = this.scenario.demand;
     vehicles.forEach((d, i) => {
       while (this.nextVehicleArrival[i]! <= this.time) {
         this.arrivedCount++;
+        const rng = this.vehStream(d);
+        const arrivalTime = this.nextVehicleArrival[i]!;
+        // Drawn now, whatever happens next, so every design sees the same vehicles.
+        const length = rng.next() < 0.06 ? 9 : 4.5;
+        const speedFactor = rng.range(0.9, 1.1);
+        this.arrivalLog?.push([arrivalTime, d.from, d.to]);
         if (this.network.movementLanes.has(movementKey(d.from, d.to))) {
-          this.backlog.get(d.from)!.push({ to: d.to, arrivalTime: this.nextVehicleArrival[i]! });
+          this.backlog.get(d.from)!.push({ to: d.to, arrivalTime, length, speedFactor });
           this.metrics.recordArrival(d.from);
         } else {
           // Banned or impossible on this layout: these drivers go another way.
           this.divertedCount++;
           this.metrics.recordDiverted();
         }
-        this.nextVehicleArrival[i]! += this.rng.exponential(d.vehPerHour / 3600);
+        this.nextVehicleArrival[i]! += rng.exponential(d.vehPerHour / 3600);
       }
     });
     pedestrians.forEach((d, i) => {
+      const rng = this.pedStream(d);
       while (this.nextPedArrival[i]! <= this.time) {
+        // Drawn whether or not this design has a crossing here, to keep the stream identical.
+        const dir = rng.next() < 0.5 ? 1 : -1;
+        const speed = rng.range(1.1, 1.5);
         const cw = this.network.crosswalks.findIndex((c) => c.leg === d.leg);
         if (cw >= 0) {
-          const dir = this.rng.next() < 0.5 ? 1 : -1;
           const path = this.network.crosswalks[cw]!.path;
           this.pedestrians.push({
             id: this.nextId++,
             crosswalk: cw,
             dir,
             s: dir === 1 ? 0 : path.length,
-            speed: this.rng.range(1.1, 1.5),
+            speed,
             crossing: false,
             arrivalTime: this.nextPedArrival[i]!,
           });
         }
-        this.nextPedArrival[i]! += this.rng.exponential(d.pedPerHour / 3600);
+        this.nextPedArrival[i]! += rng.exponential(d.pedPerHour / 3600);
       }
     });
   }
@@ -348,7 +386,7 @@ export class Simulation {
         this.metrics.recordDiverted();
         continue;
       }
-      const length = this.rng.next() < 0.06 ? 9 : 4.5;
+      const { length, speedFactor } = pending;
       // Choose the allowed lane with the most room at its start.
       let best = -1;
       let bestRoom = -Infinity;
@@ -369,7 +407,6 @@ export class Simulation {
       const lane = net.lanes[best]!;
       const connector = net.connectorsFromLane.get(best)!.map((c) => net.connectors[c]!).find((c) => c.to === pending.to)!;
       const outLane = net.lanes[connector.outLane]!;
-      const speedFactor = this.rng.range(0.9, 1.1);
       const v = bestLast && bestRoom < 40 ? bestLast.v : lane.speedLimit * speedFactor;
       const veh: Vehicle = {
         id: this.nextId++,

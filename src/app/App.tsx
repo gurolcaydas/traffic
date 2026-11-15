@@ -1,5 +1,6 @@
 import { useRef } from 'react';
 import { DemandPanel } from './components/DemandPanel';
+import { FairTestPanel } from './components/FairTestPanel';
 import { JunctionPanel } from './components/JunctionPanel';
 import { LegInspector } from './components/LegInspector';
 import { LegLabels } from './components/LegLabels';
@@ -22,6 +23,7 @@ export function App() {
       </main>
       <aside className="sidebar">
         <MetricsPanel onReset={resetMetrics} />
+        <FairTestPanel />
         <LegInspector />
         <JunctionPanel />
         <SignalPlanPanel />

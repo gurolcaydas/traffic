@@ -81,8 +81,8 @@ export function LegInspector() {
 
       <div className="field toggles">
         <label className="toggle">
-          <input type="checkbox" checked={!!leg.slipLane} onChange={(e) => update(e.target.checked ? 'slip lane added' : 'slip lane removed', (l) => (l.slipLane = e.target.checked))} />
-          Slip lane: turn into the next road without waiting at the junction
+          <input type="checkbox" checked={!!leg.slipLane} onChange={(e) => update(e.target.checked ? 'side road built' : 'side road removed', (l) => (l.slipLane = e.target.checked))} />
+          Side road: turn into the next road without entering the junction
         </label>
         {scenario.control.type === 'priority' && (
           <label className="toggle">

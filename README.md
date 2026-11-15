@@ -12,7 +12,11 @@ lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
 - pedestrian crossings
 - flyovers
 
-A before/after card compares the design with how it was before your last change. Roundabouts are next (Phase 2b).
+A before/after card compares the design with how it was before your last change.
+
+The **Fair test** gives a reliable verdict. It runs the current design and a reference design (before the last change, the original, or a pinned design) on *exactly the same traffic*, several times with different random traffic. It then reports each difference with a 95% confidence interval.
+
+Roundabouts are next (Phase 2b).
 
 ## Commands
 
@@ -34,6 +38,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/sim/simulation.ts` | The engine: vehicles (IDM car-following), gap acceptance, signals, pedestrians. Fixed 0.1 s step. |
 | `src/sim/metrics.ts` | Queues, delay, throughput, Level of Service A–F, gridlock flag (what the game scores on). |
 | `src/sim/safety.ts` | Collision checks used by the tests. |
+| `src/sim/evaluate.ts` | Headless test runs and paired statistics for the fair test. `src/app/eval.worker.ts` and `fairTest.ts` spread the runs over a pool of workers. |
 | `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |
 | `src/scenarios/templates.ts`, `setup.ts` | Parametric junctions, and the sandbox's choices (shape, lanes, control, crossings, drive side) turned into a Scenario, including an automatic signal plan. |
 | `src/app/` | React UI: the sidebar panels, the store (Zustand), and `sim.worker.ts`, which runs the simulation off the main thread and streams frames back. |
@@ -59,4 +64,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
   - Vehicles keep their place: on an approach they keep their distance from the far end, inside the junction their progress through the turn, and on an exit their distance to the map edge.
   - Drivers whose turn is gone take the closest allowed exit. New trips for a banned turn are counted as *diverted*.
 - **Delay.** Lost time is accumulated as it happens: below free speed, or waiting to enter the map. It's divided by the number of trips that started in the window. A queue that hasn't cleared still counts, and after an edit only trips that started under the new design count.
-- **Determinism.** The same scenario and seed always play out identically.
+- **Determinism and fair comparisons.** The same scenario and seed always play out identically.
+  - Every traffic flow (each origin–destination pair, each crossing) has its own random stream.
+  - A vehicle's size and temperament are drawn when it arrives, not when it gets onto the map.
+  - So two *different* designs run with the same seed see exactly the same cars at the same moments ("common random numbers"). That makes run-by-run differences a clean measure of the design.
