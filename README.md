@@ -69,6 +69,12 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 - **Pedestrians.** On a zebra, pedestrians have priority. On a signalised crossing, they walk only during their phase. Either way, they never step in front of a vehicle that can no longer stop.
 - **Turn paths.** Each turn is a straight run, a circular arc, then another straight run. Right turns (left turns in left-hand traffic) follow the curb return, so they keep their lane's distance from the curb. A test checks that every path stays on the asphalt.
 - **Calibration.** A single lane discharges about 1900 veh/h. Signal delays track Webster's formula, and a typical permissive junction gives LOS C at 200 veh/h per leg.
+- **Lane changing (MOBIL).** On an approach, drivers check every half second whether to move one lane over.
+  - *By choice:* if the next lane would let them accelerate at least 0.3 m/s² more, after subtracting 0.3 × what the car they cut in front of would lose.
+  - *By need:* about a quarter of drivers enter in whichever lane has room and must cross to a lane that serves their turn. Within 40 m of the line they accept tighter gaps, and the driver behind lets them in (zipper merge). Someone stuck for 45 s takes a turn their lane allows ("missed turn").
+  - *Safety:* a change is never allowed if the changer or its new follower would have to brake harder than 4 m/s².
+  - *Where:* no changes by choice in the solid-line zone before the stop line, nor in the first 30 m after entering the map.
+  - *Motion:* each change slides sideways over 3 s, and the car keeps blocking its old lane until it's mostly across.
 - **Slip lanes and flyovers.**
   - A slip lane is an extra curb lane that peels off before the junction, curves around a corner island, and joins the next road as an added lane. It ignores the signals.
   - A flyover gives straight-through traffic its own lane on a bridge. Bridge traffic never conflicts with traffic or pedestrians below.

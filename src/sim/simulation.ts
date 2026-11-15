@@ -31,6 +31,10 @@ export interface Vehicle {
   arrivalTime: number;
   /** Continuous time spent (nearly) stopped. */
   stoppedFor: number;
+  /** While changing lanes: the lane being left, and progress 0..1 of the sideways move. */
+  lcFrom: number | null;
+  lcT: number;
+  lastLaneChange: number;
 }
 
 export interface Pedestrian {
@@ -51,6 +55,8 @@ interface PendingVehicle {
   arrivalTime: number;
   length: number;
   speedFactor: number;
+  /** Uniform draw deciding whether this driver starts in the right lane for their turn. */
+  laneDraw: number;
 }
 
 const DT_DEFAULT = 0.1;
@@ -71,6 +77,27 @@ const PRIORITY_ACCEL = 1.0;
 const STOP_DECEL = 3.5;
 /** Pedestrians closer than this (along the crosswalk) to a vehicle path block it. */
 const PED_CLEARANCE = 3.0;
+// Lane changing (MOBIL: Kesting, Treiber & Helbing 2007).
+/** Seconds a sideways move takes. */
+const LC_DURATION = 3;
+/** Minimum seconds between two lane changes by the same driver. */
+const LC_COOLDOWN = 4;
+/** Acceleration advantage, m/s², a driver needs before changing lanes by choice. */
+const LC_THRESHOLD = 0.3;
+/** How much a driver weighs the disadvantage to the car they cut in front of. */
+const LC_POLITENESS = 0.3;
+/** The new follower must never have to brake harder than this. */
+const LC_SAFE_DECEL = 4;
+/** No changes by choice this close to the stop line (solid lane lines). */
+const NO_CHANGE_ZONE = 15;
+/** No lane changes in the first stretch after entering the map, while traffic is still settling. */
+const ENTRY_ZONE = 30;
+/** Within this distance of the line, a driver in the wrong lane gets urgent and others let them in. */
+const URGENT_ZONE = 40;
+/** Share of drivers who enter in whatever lane has room and must move across for their turn. */
+const WRONG_LANE_SHARE = 0.25;
+/** A driver stuck in the wrong lane at the line this long gives up and takes a turn their lane allows. */
+const GIVE_UP_AFTER = 45;
 const GRIDLOCK_BACKLOG = 25;
 const GRIDLOCK_STOPPED = 180;
 
@@ -105,6 +132,15 @@ export class Simulation {
   private exitedCount = 0;
   private divertedCount = 0;
   private removedCount = 0;
+  private laneChangeCount = 0;
+  private missedTurnCount = 0;
+  private stepCount = 0;
+  /** Vehicles still partly in the lane they are leaving, by that lane. */
+  private laneGhosts: Vehicle[][] = [];
+  /** Urgent mergers waiting for a gap, by the lane they want to enter. */
+  private mergeRequests = new Map<number, Vehicle[]>();
+  /** Regular inbound lanes of each leg, curb first. */
+  private regularIn = new Map<LegId, number[]>();
 
   constructor(scenario: Scenario, opts: { dt?: number } = {}) {
     this.scenario = scenario;
@@ -130,6 +166,7 @@ export class Simulation {
     this.arrive();
     this.spawn();
     this.index();
+    this.changeLanes();
 
     const accs = this.vehicles.map((veh) => this.acceleration(veh));
     this.vehicles.forEach((veh, i) => this.integrate(veh, accs[i]!, dt));
@@ -140,6 +177,7 @@ export class Simulation {
     this.observeQueues();
     this.accumulateDelay(dt);
     this.time += dt;
+    this.stepCount++;
   }
 
   /** Change traffic demand on the fly. Vehicles already on the map or waiting to enter are kept. */
@@ -195,6 +233,8 @@ export class Simulation {
       backlog,
       diverted: this.divertedCount,
       removed: this.removedCount,
+      laneChanges: this.laneChangeCount,
+      missedTurns: this.missedTurnCount,
     };
   }
 
@@ -209,6 +249,12 @@ export class Simulation {
     const net = buildNetwork(next);
     this.network = net;
     this.scenario = next;
+    this.regularIn.clear();
+    this.mergeRequests.clear();
+    for (const veh of this.vehicles) {
+      veh.lcFrom = null;
+      veh.lcT = 1;
+    }
 
     for (const leg of next.legs) if (!this.backlog.has(leg.id)) this.backlog.set(leg.id, []);
     for (const id of [...this.backlog.keys()]) {
@@ -322,12 +368,25 @@ export class Simulation {
     const off = new Set(pushedOff);
     this.vehicles = this.vehicles.filter((v) => !off.has(v));
     for (const veh of pushedOff) {
-      this.backlog.get(veh.from)?.unshift({ to: veh.to, arrivalTime: veh.arrivalTime, length: veh.length, speedFactor: veh.speedFactor });
+      this.backlog.get(veh.from)?.unshift({ to: veh.to, arrivalTime: veh.arrivalTime, length: veh.length, speedFactor: veh.speedFactor, laneDraw: 1 });
     }
   }
 
   /** World position and heading of a vehicle's centre, for rendering. */
   pose(veh: Vehicle): { x: number; y: number; heading: number } {
+    if (veh.seg === 0 && veh.lcFrom !== null && veh.s >= veh.length / 2) {
+      // Mid lane change: slide sideways from the old lane to the new one (smoothstep).
+      const sc = veh.s - veh.length / 2;
+      const from = this.network.lanes[veh.lcFrom]!.path.pointAt(sc);
+      const to = this.network.lanes[veh.inLane]!.path.pointAt(sc);
+      const d = this.network.lanes[veh.inLane]!.path.directionAt(sc);
+      const t = veh.lcT;
+      const k = t * t * (3 - 2 * t);
+      const lateralSpeed = (6 * t * (1 - t)) / LC_DURATION;
+      const hx = d.x * Math.max(veh.v, 1) + (to.x - from.x) * lateralSpeed;
+      const hy = d.y * Math.max(veh.v, 1) + (to.y - from.y) * lateralSpeed;
+      return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, heading: Math.atan2(hy, hx) };
+    }
     const path = this.pathOf(veh);
     const sc = veh.s - veh.length / 2;
     // The centre can still be on the previous segment just after a transition.
@@ -371,11 +430,12 @@ export class Simulation {
         const keep = rng.next() < demandFactor(pattern, this.hourAt(arrivalTime), d.from, d.to) / peak;
         const length = rng.next() < 0.06 ? 9 : 4.5;
         const speedFactor = rng.range(0.9, 1.1);
+        const laneDraw = rng.next();
         if (!keep) continue;
         this.arrivedCount++;
         this.arrivalLog?.push([arrivalTime, d.from, d.to]);
         if (this.network.movementLanes.has(movementKey(d.from, d.to))) {
-          this.backlog.get(d.from)!.push({ to: d.to, arrivalTime, length, speedFactor });
+          this.backlog.get(d.from)!.push({ to: d.to, arrivalTime, length, speedFactor, laneDraw });
           this.metrics.recordArrival(d.from, arrivalTime);
         } else {
           // Banned or impossible on this layout: these drivers go another way.
@@ -425,11 +485,15 @@ export class Simulation {
         continue;
       }
       const { length, speedFactor } = pending;
-      // Choose the allowed lane with the most room at its start.
+      // Most drivers pick a lane that suits their turn; some just take whichever regular lane has
+      // room and sort it out later. Either way, the lane with the most room at its start.
+      const regular = this.regularIn.get(leg) ?? [];
+      const anyLane = pending.laneDraw < WRONG_LANE_SHARE && regular.length > 1 && lanes.every((l) => regular.includes(l));
+      const candidates = anyLane ? regular : lanes;
       let best = -1;
       let bestRoom = -Infinity;
       let bestLast: Vehicle | undefined;
-      for (const l of lanes) {
+      for (const l of candidates) {
         const list = this.laneVehicles[l]!;
         const last = list[list.length - 1];
         const room = last ? last.s - last.length : Infinity;
@@ -443,8 +507,7 @@ export class Simulation {
 
       queue.shift();
       const lane = net.lanes[best]!;
-      const connector = net.connectorsFromLane.get(best)!.map((c) => net.connectors[c]!).find((c) => c.to === pending.to)!;
-      const outLane = net.lanes[connector.outLane]!;
+      const connector = this.connectorFor(best, pending.to);
       const v = bestLast && bestRoom < 40 ? bestLast.v : lane.speedLimit * speedFactor;
       const veh: Vehicle = {
         id: this.nextId++,
@@ -462,6 +525,9 @@ export class Simulation {
         committed: false,
         arrivalTime: pending.arrivalTime,
         stoppedFor: 0,
+        lcFrom: null,
+        lcT: 1,
+        lastLaneChange: -Infinity,
       };
       this.vehicles.push(veh);
       this.laneVehicles[best]!.push(veh);
@@ -473,9 +539,20 @@ export class Simulation {
   private index() {
     this.laneVehicles = this.network.lanes.map(() => []);
     this.connVehicles = this.network.connectors.map(() => []);
+    this.laneGhosts = this.network.lanes.map(() => []);
+    if (this.regularIn.size === 0) {
+      for (const l of this.network.lanes) {
+        if (l.kind !== 'in' || l.role !== 'regular') continue;
+        this.regularIn.set(l.leg, [...(this.regularIn.get(l.leg) ?? []), l.idx]);
+      }
+      for (const list of this.regularIn.values()) list.sort((a, b) => this.network.lanes[a]!.index - this.network.lanes[b]!.index);
+    }
     for (const veh of this.vehicles) {
-      if (veh.seg === 0) this.laneVehicles[veh.inLane]!.push(veh);
-      else if (veh.seg === 1) this.connVehicles[veh.connector]!.push(veh);
+      if (veh.seg === 0) {
+        this.laneVehicles[veh.inLane]!.push(veh);
+        // Until it is mostly across, a changing car still blocks the lane it is leaving.
+        if (veh.lcFrom !== null && veh.lcT < 0.7) this.laneGhosts[veh.lcFrom]!.push(veh);
+      } else if (veh.seg === 1) this.connVehicles[veh.connector]!.push(veh);
       else this.laneVehicles[veh.outLane]!.push(veh);
     }
     // Leader first.
@@ -494,6 +571,158 @@ export class Simulation {
     const net = this.network;
     if (veh.seg === 2) return net.connectors[veh.connector]!.path;
     return net.lanes[veh.inLane]!.path;
+  }
+
+  // --- lane changing ------------------------------------------------------
+
+  /** The turn from `lane` to `to`, or any turn from that lane if it doesn't lead there (wrong lane). */
+  private connectorFor(lane: number, to: LegId): Connector {
+    const net = this.network;
+    const conns = (net.connectorsFromLane.get(lane) ?? []).map((c) => net.connectors[c]!);
+    return conns.find((c) => c.to === to) ?? conns[0]!;
+  }
+
+  /** True if this lane cannot take the vehicle where it is going. */
+  private inWrongLane(veh: Vehicle): boolean {
+    return this.network.connectors[veh.connector]!.to !== veh.to;
+  }
+
+  /**
+   * Drivers on an approach consider moving one lane over, every half second.
+   * In the wrong lane for their turn they must, and get more insistent near the line.
+   * Otherwise they may, if the next lane is faster by enough and it is safe (MOBIL).
+   */
+  private changeLanes() {
+    const net = this.network;
+    this.mergeRequests.clear();
+    for (const veh of this.vehicles) {
+      if (veh.seg !== 0 || veh.committed || veh.lcFrom !== null) continue;
+      if ((this.stepCount + veh.id) % 5 !== 0) continue;
+      const lane = net.lanes[veh.inLane]!;
+      if (lane.role !== 'regular' || veh.s < ENTRY_ZONE) continue;
+      const regular = this.regularIn.get(lane.leg) ?? [];
+      const pos = regular.indexOf(lane.idx);
+      const toLine = lane.path.length - veh.s;
+      const allowed = new Set(net.movementLanes.get(movementKey(veh.from, veh.to)) ?? []);
+      const wrong = this.inWrongLane(veh);
+
+      if (wrong) {
+        // Head one lane at a time towards the nearest lane that serves the turn.
+        const goals = regular.map((l, i) => ({ l, i })).filter(({ l }) => allowed.has(l));
+        if (goals.length === 0) continue;
+        const goal = goals.reduce((a, b) => (Math.abs(a.i - pos) <= Math.abs(b.i - pos) ? a : b));
+        const target = regular[pos + Math.sign(goal.i - pos)]!;
+        const urgent = toLine < URGENT_ZONE;
+        if (this.time - veh.lastLaneChange > LC_COOLDOWN && this.laneChangeIsSafe(veh, target, urgent)) {
+          this.doLaneChange(veh, target);
+        } else if (urgent) {
+          const list = this.mergeRequests.get(target) ?? [];
+          list.push(veh);
+          this.mergeRequests.set(target, list);
+          // Stuck at the line too long: give up and take whatever this lane allows ("missed my turn").
+          if (veh.stoppedFor > GIVE_UP_AFTER && toLine < 10) {
+            const conn = this.network.connectors[veh.connector]!;
+            veh.to = conn.to;
+            veh.outLane = conn.outLane;
+            this.missedTurnCount++;
+          }
+        }
+        continue;
+      }
+
+      if (toLine < NO_CHANGE_ZONE || this.time - veh.lastLaneChange < LC_COOLDOWN) continue;
+      let best: { lane: number; gain: number } | null = null;
+      for (const target of [regular[pos - 1], regular[pos + 1]]) {
+        if (target === undefined || !allowed.has(target)) continue;
+        const gain = this.laneChangeGain(veh, target);
+        if (gain > LC_THRESHOLD && (!best || gain > best.gain) && this.laneChangeIsSafe(veh, target, false)) best = { lane: target, gain };
+      }
+      if (best) this.doLaneChange(veh, best.lane);
+    }
+    if (this.laneChangeThisStep) this.index();
+    this.laneChangeThisStep = false;
+  }
+
+  private laneChangeThisStep = false;
+
+  private doLaneChange(veh: Vehicle, target: number) {
+    const conn = this.connectorFor(target, veh.to);
+    veh.lcFrom = veh.inLane;
+    veh.lcT = 0;
+    veh.lastLaneChange = this.time;
+    veh.inLane = target;
+    veh.connector = conn.idx;
+    veh.outLane = conn.outLane;
+    this.laneChangeCount++;
+    this.laneChangeThisStep = true;
+  }
+
+  /** The nearest vehicles ahead of and behind position s in a lane, counting cars still leaving it. */
+  private neighboursAt(lane: number, s: number, self: Vehicle): { leader?: Vehicle; follower?: Vehicle } {
+    let leader: Vehicle | undefined;
+    let follower: Vehicle | undefined;
+    for (const x of [...this.laneVehicles[lane]!, ...this.laneGhosts[lane]!]) {
+      if (x === self) continue;
+      if (x.s >= s) {
+        if (!leader || x.s < leader.s) leader = x;
+      } else if (!follower || x.s > follower.s) follower = x;
+    }
+    if (!leader) {
+      // A car that has just crossed the line from this lane still has its tail back here.
+      const laneLen = this.network.lanes[lane]!.path.length;
+      for (const c of this.network.connectorsFromLane.get(lane) ?? []) {
+        for (const x of this.connVehicles[c]!) {
+          if (x.s - x.length > 3) continue;
+          const asIfOnLane = { ...x, s: laneLen + x.s };
+          if (!leader || asIfOnLane.s < leader.s) leader = asIfOnLane;
+        }
+      }
+    }
+    return { leader, follower };
+  }
+
+  private freeAccel(veh: Vehicle, leader: Vehicle | undefined, gapTo: (l: Vehicle) => number): number {
+    const v0 = this.network.lanes[veh.inLane]!.speedLimit * veh.speedFactor;
+    return leader ? idm(this.idm, veh.v, v0, gapTo(leader), veh.v - leader.v) : idm(this.idm, veh.v, v0, Infinity, 0);
+  }
+
+  /** MOBIL incentive: my gain from moving, minus a polite share of what my new follower loses. */
+  private laneChangeGain(veh: Vehicle, target: number): number {
+    const here = this.neighboursAt(veh.inLane, veh.s, veh);
+    const there = this.neighboursAt(target, veh.s, veh);
+    const gap = (l: Vehicle) => l.s - l.length - veh.s;
+    const mine = this.freeAccel(veh, there.leader, gap) - this.freeAccel(veh, here.leader, gap);
+    let theirs = 0;
+    const f = there.follower;
+    if (f) {
+      const before = this.freeAccel(f, there.leader, (l) => l.s - l.length - f.s);
+      const after = this.freeAccel(f, veh, (l) => l.s - l.length - f.s);
+      theirs = Math.max(0, before - after);
+    }
+    return mine - LC_POLITENESS * theirs;
+  }
+
+  /** Room in front and behind, and nobody (changer or new follower) has to brake hard. Urgent mergers accept tighter gaps. */
+  private laneChangeIsSafe(veh: Vehicle, target: number, urgent: boolean): boolean {
+    const { leader, follower } = this.neighboursAt(target, veh.s, veh);
+    const minGap = urgent ? 1 : 2;
+    // The car turning out sweeps its tail across the car right behind it; leave room for that.
+    const behind = this.neighboursAt(veh.inLane, veh.s, veh).follower;
+    if (behind && veh.s - veh.length - behind.s < minGap) return false;
+    if (leader) {
+      const gap = leader.s - leader.length - veh.s;
+      if (gap < minGap) return false;
+      // Nor may the changer have to brake hard for its new leader (e.g. a stopped queue).
+      const v0 = this.network.lanes[target]!.speedLimit * veh.speedFactor;
+      if (idm(this.idm, veh.v, v0, gap, veh.v - leader.v) < -LC_SAFE_DECEL) return false;
+    }
+    if (follower) {
+      const gap = veh.s - veh.length - follower.s;
+      if (gap < minGap) return false;
+      const v0 = this.network.lanes[target]!.speedLimit * follower.speedFactor;
+      if (idm(this.idm, follower.v, v0, gap, follower.v - veh.v) < -LC_SAFE_DECEL) return false;
+    }
+    return true;
   }
 
   // --- driving ------------------------------------------------------------
@@ -520,11 +749,25 @@ export class Simulation {
     if (leader) obstacle(leader.gap, leader.v);
 
     if (veh.seg === 0) {
+      // A car still sliding out of this lane is in the way until it is across.
+      for (const g of this.laneGhosts[veh.inLane]!) {
+        if (g !== veh && g.s > veh.s) obstacle(g.s - g.length - veh.s, g.v);
+      }
+      // Zipper merge: let in an urgent merger just ahead in the next lane.
+      for (const m of this.mergeRequests.get(veh.inLane) ?? []) {
+        // Hold back behind its rear; a car already alongside can't help and doesn't brake.
+        const gap = m.s - m.length - veh.s;
+        if (gap > 0 && gap < 20) obstacle(gap, 0);
+      }
+    }
+
+    if (veh.seg === 0) {
       // 2. Decide whether we may enter the junction.
       const d = toConnector;
       if (d < decisionDistance(veh.v)) {
         const canStop = d > stoppingDistance(veh.v, STOP_DECEL) + 0.5;
-        const permitted = this.mayEnter(veh, conn, d, canStop);
+        // A driver in the wrong lane for their turn waits at the line for a chance to move over.
+        const permitted = !this.inWrongLane(veh) && this.mayEnter(veh, conn, d, canStop);
         veh.committed = permitted || (veh.committed && !canStop);
         if (!veh.committed) obstacle(d - 0.5, 0);
       } else {
@@ -735,6 +978,13 @@ export class Simulation {
 
   private integrate(veh: Vehicle, acc: number, dt: number) {
     veh.acc = acc;
+    if (veh.lcFrom !== null) {
+      veh.lcT += dt / LC_DURATION;
+      if (veh.lcT >= 1 || veh.seg !== 0) {
+        veh.lcFrom = null;
+        veh.lcT = 1;
+      }
+    }
     let v = veh.v + acc * dt;
     let ds = veh.v * dt + 0.5 * acc * dt * dt;
     if (v < 0) {

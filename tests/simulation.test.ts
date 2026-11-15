@@ -259,3 +259,47 @@ describe('Live editing (applyScenario)', () => {
     expect(sim.getMetrics().gridlock).toBe(false);
   });
 });
+
+describe('Lane changing', () => {
+  it('drivers change lanes, and every car enters the junction from a lane that serves its turn', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 600, lanes: 3, control: twoPhaseSignals(25) }));
+    const prevSeg = new Map<number, number>();
+    let entries = 0;
+    let wrongEntries = 0;
+    let collisions = 0;
+    for (let i = 0; i < 9000; i++) {
+      sim.step();
+      for (const v of sim.vehicles) {
+        if (prevSeg.get(v.id) === 0 && v.seg === 1) {
+          entries++;
+          const conn = sim.network.connectors[v.connector]!;
+          if (conn.to !== v.to || !sim.network.movementLanes.get(`${v.from}>${v.to}`)!.includes(conn.inLane)) wrongEntries++;
+        }
+        prevSeg.set(v.id, v.seg);
+      }
+      if (i % 5 === 0) collisions += overlappingVehicles(sim).length;
+    }
+    const c = sim.counts();
+    expect(entries).toBeGreaterThan(500);
+    expect(wrongEntries).toBe(0);
+    expect(collisions).toBe(0);
+    expect(c.laneChanges).toBeGreaterThan(100);
+    // Drivers who start in the wrong lane nearly always get across in time.
+    expect(c.missedTurns).toBeLessThan(0.03 * c.arrived);
+    expect(sim.getMetrics().gridlock).toBe(false);
+  });
+
+  it('keeps single-lane roads free of lane changes', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 400 }));
+    sim.run(600);
+    expect(sim.counts().laneChanges).toBe(0);
+  });
+
+  it('lets cars leave a lane blocked by waiting turners', () => {
+    // Two lanes; left turners wait in the inner lane under permissive signals. Through drivers who
+    // entered behind them should move to the curb lane rather than wait.
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 500, lanes: 2, control: twoPhaseSignals(25) }));
+    sim.run(900);
+    expect(sim.counts().laneChanges).toBeGreaterThan(30);
+  });
+});
