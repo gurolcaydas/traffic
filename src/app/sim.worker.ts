@@ -50,6 +50,10 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
     case 'speed':
       speed = msg.speed;
       break;
+    case 'timeOfDay':
+      sim?.setTimeOfDay(msg.hour);
+      sendFrame();
+      break;
     case 'resetMetrics':
       sim?.resetMetrics();
       sendMetrics();
@@ -105,7 +109,7 @@ function sendFrame() {
     peds[i * PED_STRIDE + 1] = pos.y;
     peds[i * PED_STRIDE + 2] = p.crossing ? 1 : 0;
   });
-  const frame: Frame = { type: 'frame', time: sim.time, clock: sim.clock, vehIds, veh, pedIds, peds };
+  const frame: Frame = { type: 'frame', time: sim.time, clock: sim.clock, timeOfDay: sim.timeOfDay, vehIds, veh, pedIds, peds };
   post(frame, [vehIds.buffer, veh.buffer, pedIds.buffer, peds.buffer]);
 }
 

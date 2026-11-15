@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Scenario } from '../../core/types';
+import { busiestWindow, formatClock } from '../../scenarios/patterns';
 import {
+  PEAK_HOURS,
   TEST_PLANS,
   compare,
   makePlan,
@@ -10,6 +12,7 @@ import {
   type MetricKey,
   type RunResult,
   type TestLength,
+  type TestWindow,
 } from '../../sim/evaluate';
 import { runFairTest, type FairTestRun } from '../fairTest';
 import { useApp } from '../store';
@@ -21,6 +24,8 @@ interface Outcome {
   key: string;
   referenceLabel: string;
   plan: TestLength;
+  /** What stretch of traffic each run covered, for the footnote. */
+  span: string;
   reference: DesignSummary;
   candidate: DesignSummary;
   referenceRuns: RunResult[];
@@ -45,6 +50,8 @@ export function FairTestPanel() {
 
   const [choice, setChoice] = useState<ReferenceChoice>('last');
   const [length, setLength] = useState<TestLength>('standard');
+  const [testWindow, setTestWindow] = useState<TestWindow>('peak');
+  const pattern = scenario.demand.pattern;
   const [progress, setProgress] = useState<number | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +75,9 @@ export function FairTestPanel() {
     setError(null);
     setProgress(0);
     const reference = { ...ref.scenario, demand: scenario.demand }; // same traffic for both
-    const run = runFairTest(reference, scenario, makePlan(length), setProgress);
+    const plan = makePlan(length, pattern, testWindow);
+    const span = plan.startHour !== undefined ? `${formatClock(plan.startHour)}–${formatClock(plan.startHour + plan.duration / 3600)}` : `${Math.round(plan.duration / 60)} min`;
+    const run = runFairTest(reference, scenario, plan, setProgress);
     running.current = run;
     const signalised = (s: Scenario) => s.control.type === 'signals';
     run.done
@@ -78,6 +87,7 @@ export function FairTestPanel() {
           key: currentKey,
           referenceLabel: ref.label,
           plan: length,
+          span,
           reference: summarize(r, signalised(reference)),
           candidate: summarize(c, signalised(scenario)),
           referenceRuns: r,
@@ -98,6 +108,12 @@ export function FairTestPanel() {
   };
 
   const plan = TEST_PLANS[length];
+  const peakStart = pattern ? busiestWindow(pattern, PEAK_HOURS) : 0;
+  const runSpan = !pattern
+    ? `${plan.minutes} min`
+    : testWindow === 'peak'
+      ? `${formatClock(peakStart)}–${formatClock(peakStart + PEAK_HOURS)}`
+      : `${formatClock(pattern.startHour)}–${formatClock(pattern.endHour)}`;
 
   return (
     <section className="panel">
@@ -139,13 +155,28 @@ export function FairTestPanel() {
         />
       </div>
 
+      {pattern && (
+        <div className="field">
+          <label>Which part of the day</label>
+          <Segmented<TestWindow>
+            label="Test window"
+            value={testWindow}
+            options={[
+              { value: 'peak', label: `Busiest ${PEAK_HOURS} h`, title: `${formatClock(peakStart)}–${formatClock(peakStart + PEAK_HOURS)}` },
+              { value: 'day', label: 'Whole day', title: `${formatClock(pattern.startHour)}–${formatClock(pattern.endHour)}: slower` },
+            ]}
+            onChange={setTestWindow}
+          />
+        </div>
+      )}
+
       {progress === null ? (
         <div className="row gap">
           <button className="btn primary" onClick={start} disabled={sameDesign}>
             Run test
           </button>
           <span className="hint">
-            {sameDesign ? 'Nothing to compare: change the design first.' : `${plan.runs} runs × ${plan.minutes} min, both designs`}
+            {sameDesign ? 'Nothing to compare: change the design first.' : `${plan.runs} runs of ${runSpan}, both designs`}
           </span>
         </div>
       ) : (
@@ -167,6 +198,7 @@ export function FairTestPanel() {
 
 const ROWS: Array<{ key: MetricKey; label: string; unit: string; lowerIsBetter: boolean }> = [
   { key: 'avgDelay', label: 'Avg delay', unit: 's', lowerIsBetter: true },
+  { key: 'worst15Delay', label: 'Worst 15 min', unit: 's', lowerIsBetter: true },
   { key: 'throughput', label: 'Throughput', unit: '/h', lowerIsBetter: false },
   { key: 'worstQueue', label: 'Worst queue', unit: '', lowerIsBetter: true },
   { key: 'pedWait', label: 'Ped wait', unit: 's', lowerIsBetter: true },
@@ -241,7 +273,7 @@ function Results({ outcome, stale, hasPeds }: { outcome: Outcome; stale: boolean
         </p>
       )}
       <p className="hint">
-        {TEST_PLANS[outcome.plan].runs} runs × {TEST_PLANS[outcome.plan].minutes} min each, after 5 min of warm-up. ± is the 95% confidence interval.
+        {TEST_PLANS[outcome.plan].runs} runs of {outcome.span} each, after a warm-up. ± is the 95% confidence interval.
       </p>
     </div>
   );

@@ -2,6 +2,7 @@ import { streamRng, type Rng } from '../core/rng';
 import type { LegId, Scenario } from '../core/types';
 import { buildNetwork } from '../network/build';
 import { movementKey, type ConflictRef, type Connector, type Network } from '../network/network';
+import { demandFactor, maxDemandFactor, pedFactor } from '../scenarios/patterns';
 import { DEFAULT_IDM, MAX_DECEL, idm, stoppingDistance, timeToTravel, type IdmParams } from './kinematics';
 import { MetricsCollector, type MetricsSnapshot } from './metrics';
 import { connectorSignal, signalClock, stateFor, type SignalClock } from './signals';
@@ -88,6 +89,8 @@ export class Simulation {
    * the same traffic: the basis of fair comparisons.
    */
   private streams = new Map<string, Rng>();
+  /** Clock time of day at simulation time 0, in seconds (only meaningful with a demand pattern). */
+  private dayStart = 0;
   /** Optional record of every arrival, for tests: [time, from, to]. */
   arrivalLog: Array<[number, LegId, LegId]> | null = null;
   private idm: IdmParams = DEFAULT_IDM;
@@ -109,8 +112,9 @@ export class Simulation {
     this.dt = opts.dt ?? DT_DEFAULT;
 
     for (const leg of scenario.legs) this.backlog.set(leg.id, []);
-    this.nextVehicleArrival = scenario.demand.vehicles.map((d) => this.vehStream(d).exponential(d.vehPerHour / 3600));
-    this.nextPedArrival = scenario.demand.pedestrians.map((d) => this.pedStream(d).exponential(d.pedPerHour / 3600));
+    this.dayStart = (scenario.demand.pattern?.startHour ?? 0) * 3600;
+    this.nextVehicleArrival = scenario.demand.vehicles.map((d) => this.vehStream(d).exponential(this.peakVehRate(d.vehPerHour)));
+    this.nextPedArrival = scenario.demand.pedestrians.map((d) => this.pedStream(d).exponential(this.peakPedRate(d.pedPerHour)));
     this.metrics = new MetricsCollector(scenario.legs.map((l) => l.id));
     this.index();
   }
@@ -140,9 +144,36 @@ export class Simulation {
 
   /** Change traffic demand on the fly. Vehicles already on the map or waiting to enter are kept. */
   setDemand(demand: Scenario['demand']) {
+    const before = this.scenario.demand.pattern?.id;
     this.scenario = { ...this.scenario, demand };
-    this.nextVehicleArrival = demand.vehicles.map((d) => this.time + this.vehStream(d).exponential(d.vehPerHour / 3600));
-    this.nextPedArrival = demand.pedestrians.map((d) => this.time + this.pedStream(d).exponential(d.pedPerHour / 3600));
+    // A newly chosen pattern starts its day now; changing only its direction keeps the clock.
+    if (demand.pattern && demand.pattern.id !== before) this.setTimeOfDay(demand.pattern.startHour);
+    this.nextVehicleArrival = demand.vehicles.map((d) => this.time + this.vehStream(d).exponential(this.peakVehRate(d.vehPerHour)));
+    this.nextPedArrival = demand.pedestrians.map((d) => this.time + this.pedStream(d).exponential(this.peakPedRate(d.pedPerHour)));
+  }
+
+  /** Clock time of day in hours, or null without a demand pattern. */
+  get timeOfDay(): number | null {
+    return this.scenario.demand.pattern ? this.hourAt(this.time) : null;
+  }
+
+  /** Jump the clock. Arrivals are thinned against the clock, so nothing needs rescheduling. */
+  setTimeOfDay(hour: number) {
+    this.dayStart = hour * 3600 - this.time;
+  }
+
+  private hourAt(t: number) {
+    return (this.dayStart + t) / 3600;
+  }
+
+  /** Candidate arrivals come at the pattern's peak rate and are thinned down to the rate of the moment. */
+  private peakVehRate(vehPerHour: number) {
+    return (vehPerHour * maxDemandFactor(this.scenario.demand.pattern)) / 3600;
+  }
+
+  private peakPedRate(pedPerHour: number) {
+    const p = this.scenario.demand.pattern;
+    return (pedPerHour * (p ? Math.max(...p.points.map(([, f]) => f)) : 1)) / 3600;
   }
 
   resetMetrics() {
@@ -329,33 +360,41 @@ export class Simulation {
   }
 
   private arrive() {
-    const { vehicles, pedestrians } = this.scenario.demand;
+    const { vehicles, pedestrians, pattern } = this.scenario.demand;
+    const peak = maxDemandFactor(pattern);
     vehicles.forEach((d, i) => {
+      const rng = this.vehStream(d);
       while (this.nextVehicleArrival[i]! <= this.time) {
-        this.arrivedCount++;
-        const rng = this.vehStream(d);
         const arrivalTime = this.nextVehicleArrival[i]!;
-        // Drawn now, whatever happens next, so every design sees the same vehicles.
+        this.nextVehicleArrival[i]! += rng.exponential(this.peakVehRate(d.vehPerHour));
+        // Everything is drawn now, whatever happens next, so every design sees the same vehicles.
+        const keep = rng.next() < demandFactor(pattern, this.hourAt(arrivalTime), d.from, d.to) / peak;
         const length = rng.next() < 0.06 ? 9 : 4.5;
         const speedFactor = rng.range(0.9, 1.1);
+        if (!keep) continue;
+        this.arrivedCount++;
         this.arrivalLog?.push([arrivalTime, d.from, d.to]);
         if (this.network.movementLanes.has(movementKey(d.from, d.to))) {
           this.backlog.get(d.from)!.push({ to: d.to, arrivalTime, length, speedFactor });
-          this.metrics.recordArrival(d.from);
+          this.metrics.recordArrival(d.from, arrivalTime);
         } else {
           // Banned or impossible on this layout: these drivers go another way.
           this.divertedCount++;
           this.metrics.recordDiverted();
         }
-        this.nextVehicleArrival[i]! += rng.exponential(d.vehPerHour / 3600);
       }
     });
+    const pedPeak = pattern ? Math.max(...pattern.points.map(([, f]) => f)) : 1;
     pedestrians.forEach((d, i) => {
       const rng = this.pedStream(d);
       while (this.nextPedArrival[i]! <= this.time) {
+        const arrivalTime = this.nextPedArrival[i]!;
+        this.nextPedArrival[i]! += rng.exponential(this.peakPedRate(d.pedPerHour));
         // Drawn whether or not this design has a crossing here, to keep the stream identical.
+        const keep = rng.next() < pedFactor(pattern, this.hourAt(arrivalTime)) / pedPeak;
         const dir = rng.next() < 0.5 ? 1 : -1;
         const speed = rng.range(1.1, 1.5);
+        if (!keep) continue;
         const cw = this.network.crosswalks.findIndex((c) => c.leg === d.leg);
         if (cw >= 0) {
           const path = this.network.crosswalks[cw]!.path;
@@ -366,10 +405,9 @@ export class Simulation {
             s: dir === 1 ? 0 : path.length,
             speed,
             crossing: false,
-            arrivalTime: this.nextPedArrival[i]!,
+            arrivalTime,
           });
         }
-        this.nextPedArrival[i]! += rng.exponential(d.pedPerHour / 3600);
       }
     });
   }
@@ -814,11 +852,11 @@ export class Simulation {
       const free =
         veh.seg === 1 ? net.connectors[veh.connector]!.speedLimit : net.lanes[veh.seg === 0 ? veh.inLane : veh.outLane]!.speedLimit;
       const lost = dt * Math.max(0, 1 - veh.v / (free * veh.speedFactor));
-      if (lost > 0) this.metrics.addLostTime(veh.from, lost);
+      if (lost > 0) this.metrics.addLostTime(veh.from, lost, this.time);
     }
     // Waiting to even enter the map is all lost time.
     for (const [leg, queue] of this.backlog) {
-      for (const p of queue) if (p.arrivalTime >= since) this.metrics.addLostTime(leg, dt);
+      for (const p of queue) if (p.arrivalTime >= since) this.metrics.addLostTime(leg, dt, this.time);
     }
   }
 

@@ -60,6 +60,14 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
                 <span className="num">{Math.round(m.throughputPerHour)}</span> veh/h
               </dd>
             </div>
+            {(scenario.demand.pattern || m.window >= 1800) && (
+              <div title="Average delay in the worst 15 minutes so far: the moment a design has to survive">
+                <dt>Worst 15 min</dt>
+                <dd>
+                  <span className="num">{fmt(m.worst15Delay)}</span> s
+                </dd>
+              </div>
+            )}
             {scenario.crosswalks.length > 0 && (
               <div>
                 <dt>Ped wait</dt>

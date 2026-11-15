@@ -15,13 +15,17 @@ export type ToWorker =
   | { type: 'play' }
   | { type: 'pause' }
   | { type: 'speed'; speed: number }
-  | { type: 'resetMetrics' };
+  | { type: 'resetMetrics' }
+  /** Jump the time-of-day clock (with a demand pattern). */
+  | { type: 'timeOfDay'; hour: number };
 
 export interface Frame {
   type: 'frame';
   /** Simulated seconds. */
   time: number;
   clock: SignalClock | null;
+  /** Clock time in hours when a demand pattern is active. */
+  timeOfDay: number | null;
   vehIds: Int32Array;
   veh: Float32Array;
   pedIds: Int32Array;

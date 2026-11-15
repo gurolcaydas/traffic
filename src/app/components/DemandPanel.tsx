@@ -1,5 +1,8 @@
 import { legColor } from '../../render/theme';
+import { PATTERNS } from '../../scenarios/patterns';
 import { useApp } from '../store';
+import { DayChart } from './DayChart';
+import { Segmented } from './Segmented';
 
 const Badge = ({ i, id }: { i: number; id: string }) => (
   <span className="leg-badge small" style={{ background: legColor(i) }}>
@@ -13,7 +16,13 @@ export function DemandPanel() {
   const setVeh = useApp((s) => s.setVehicleDemand);
   const setPed = useApp((s) => s.setPedDemand);
   const scaleDemand = useApp((s) => s.scaleDemand);
+  const setPattern = useApp((s) => s.setPattern);
+  const setCentreLeg = useApp((s) => s.setCentreLeg);
+  const jumpToHour = useApp((s) => s.jumpToHour);
+  const timeOfDay = useApp((s) => s.timeOfDay);
   const { legs, demand } = scenario;
+  const pattern = demand.pattern;
+  const preset = pattern ? PATTERNS[pattern.id] : undefined;
   const value = (from: string, to: string) => demand.vehicles.find((d) => d.from === from && d.to === to)?.vehPerHour ?? 0;
   const total = demand.vehicles.reduce((s, d) => s + d.vehPerHour, 0);
   const banned = (from: string, to: string) => legs.find((l) => l.id === from)?.banned?.includes(to) ?? false;
@@ -23,9 +32,44 @@ export function DemandPanel() {
       <header className="panel-head">
         <h2>Traffic</h2>
         <span className="hint">
-          <span className="num">{total}</span> veh/h total
+          <span className="num">{total}</span> veh/h {pattern ? 'at peak' : 'total'}
         </span>
       </header>
+
+      <div className="field">
+        <label>Through the day</label>
+        <Segmented<string>
+          label="Traffic pattern"
+          value={pattern?.id ?? 'flat'}
+          options={[{ value: 'flat', label: 'Constant', title: 'The table, all day long' }, ...Object.entries(PATTERNS).map(([id, p]) => ({ value: id, label: p.label, title: p.description }))]}
+          onChange={(id) => setPattern(id === 'flat' ? null : id)}
+        />
+      </div>
+
+      {pattern && preset && (
+        <>
+          <p className="hint">{preset.description} The table below is the peak-hour traffic.</p>
+          {preset.tidal && (
+            <div className="field inline-field">
+              <label>{preset.centreLabel}</label>
+              <div className="chips">
+                {legs.map((l, i) => (
+                  <button
+                    key={l.id}
+                    className={`chip ${pattern.centreLeg === l.id ? 'on' : ''}`}
+                    aria-pressed={pattern.centreLeg === l.id}
+                    onClick={() => setCentreLeg(l.id)}
+                    style={pattern.centreLeg === l.id ? undefined : { borderColor: legColor(i) }}
+                  >
+                    {l.id}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          <DayChart pattern={pattern} now={timeOfDay} onJump={jumpToHour} />
+        </>
+      )}
 
       <table className="od">
         <thead>

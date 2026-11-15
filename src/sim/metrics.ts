@@ -35,6 +35,8 @@ export interface MetricsSnapshot {
   pedAvgWait: number;
   /** Trips that could not use this junction because their turn is banned. */
   diverted: number;
+  /** Average delay in the worst 15 minutes measured so far (the "peak 15 minutes"). */
+  worst15Delay: number;
   legs: LegMetrics[];
   gridlock: boolean;
 }
@@ -55,6 +57,8 @@ export class MetricsCollector {
   private pedCrossed = 0;
   private pedWait = 0;
   private diverted = 0;
+  /** Per-minute buckets of lost time and arrivals, for the worst 15 minutes. */
+  private minutes: Array<{ lost: number; arrivals: number }> = [];
   private legs = new Map<LegId, LegAccumulator>();
 
   constructor(legIds: LegId[], time = 0) {
@@ -69,6 +73,7 @@ export class MetricsCollector {
     this.pedCrossed = 0;
     this.pedWait = 0;
     this.diverted = 0;
+    this.minutes = [];
     this.legs = new Map(legIds.map((id) => [id, { completed: 0, lost: 0, arrivals: 0, maxQueue: 0 }]));
   }
 
@@ -77,8 +82,15 @@ export class MetricsCollector {
     return this.start;
   }
 
-  recordArrival(leg: LegId) {
+  private minute(time: number) {
+    const i = Math.max(0, Math.floor((time - this.start) / 60));
+    while (this.minutes.length <= i) this.minutes.push({ lost: 0, arrivals: 0 });
+    return this.minutes[i]!;
+  }
+
+  recordArrival(leg: LegId, time: number) {
     this.arrivals++;
+    this.minute(time).arrivals++;
     const l = this.legs.get(leg);
     if (l) l.arrivals++;
   }
@@ -87,8 +99,9 @@ export class MetricsCollector {
    * Delay is accumulated while it happens rather than when trips finish, so a queue that hasn't
    * cleared yet still counts. Only trips that arrived in the current window are passed in here.
    */
-  addLostTime(leg: LegId, seconds: number) {
+  addLostTime(leg: LegId, seconds: number, time: number) {
     this.lost += seconds;
+    this.minute(time).lost += seconds;
     const l = this.legs.get(leg);
     if (l) l.lost += seconds;
   }
@@ -119,6 +132,24 @@ export class MetricsCollector {
     if (l && queue > l.maxQueue) l.maxQueue = queue;
   }
 
+  /** Highest average delay over any `n` consecutive minutes with enough traffic to judge. */
+  private worstWindow(n: number): number {
+    if (this.minutes.length < n) return this.arrivals ? this.lost / this.arrivals : 0;
+    let worst = 0;
+    let lost = 0;
+    let arrivals = 0;
+    for (let i = 0; i < this.minutes.length; i++) {
+      lost += this.minutes[i]!.lost;
+      arrivals += this.minutes[i]!.arrivals;
+      if (i >= n) {
+        lost -= this.minutes[i - n]!.lost;
+        arrivals -= this.minutes[i - n]!.arrivals;
+      }
+      if (i >= n - 1 && arrivals >= 10) worst = Math.max(worst, lost / arrivals);
+    }
+    return worst;
+  }
+
   snapshot(
     time: number,
     signalised: boolean,
@@ -136,6 +167,7 @@ export class MetricsCollector {
       pedCrossed: this.pedCrossed,
       pedAvgWait: this.pedCrossed ? this.pedWait / this.pedCrossed : 0,
       diverted: this.diverted,
+      worst15Delay: this.worstWindow(15),
       legs: [...this.legs].map(([leg, a]) => ({
         leg,
         queue: current.get(leg)?.queue ?? 0,

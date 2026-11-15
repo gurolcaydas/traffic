@@ -1,7 +1,9 @@
+import { formatClock } from '../../scenarios/patterns';
 import { useApp, type ThemeChoice } from '../store';
 import { Segmented } from './Segmented';
 
-const SPEEDS = [1, 2, 4, 8, 16];
+// Close watching, normal viewing, fast-forward, and a whole day in a few minutes.
+const SPEEDS = [1, 2, 4, 16, 64];
 
 const clockText = (t: number) => {
   const m = Math.floor(t / 60);
@@ -14,6 +16,7 @@ export function TopBar({ onFit }: { onFit: () => void }) {
   const speed = useApp((s) => s.speed);
   const simTime = useApp((s) => s.simTime);
   const clock = useApp((s) => s.clock);
+  const timeOfDay = useApp((s) => s.timeOfDay);
   const theme = useApp((s) => s.theme);
   const { setPlaying, setSpeed, restart, setTheme } = useApp.getState();
 
@@ -39,8 +42,8 @@ export function TopBar({ onFit }: { onFit: () => void }) {
         <button className="btn" onClick={onFit} title="Fit the junction in view (or double-click the map)">
           ⤢ Fit
         </button>
-        <span className="clock num" title="Simulated time">
-          {clockText(simTime)}
+        <span className="clock num" title={timeOfDay !== null ? 'Time of day' : 'Simulated time'}>
+          {timeOfDay !== null ? formatClock(timeOfDay) : clockText(simTime)}
           {clock && (
             <span className="phase">
               {' · '}phase {clock.phase + 1} {clock.stage === 'green' ? 'green' : clock.stage === 'amber' ? 'amber' : 'all-red'}

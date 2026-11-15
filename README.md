@@ -16,6 +16,17 @@ A before/after card compares the design with how it was before your last change.
 
 The **Fair test** gives a reliable verdict. It runs the current design and a reference design (before the last change, the original, or a pinned design) on *exactly the same traffic*, several times with different random traffic. It then reports each difference with a 95% confidence interval.
 
+**Traffic through the day.** Choose a pattern:
+
+- commuter day
+- school run
+- evening event
+- weekend
+
+The demand table then counts as the peak hour, and the pattern scales it hour by hour. Commuter, school and event patterns are *tidal*: they send traffic towards a chosen leg (town centre, school or venue) at one time of day and away from it at another.
+
+The sidebar shows the day as a chart: click it to jump the clock. The metrics include the **worst 15 minutes**, and the fair test can cover the busiest 3 hours or the whole day.
+
 Roundabouts are next (Phase 2b).
 
 ## Commands
@@ -38,6 +49,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/sim/simulation.ts` | The engine: vehicles (IDM car-following), gap acceptance, signals, pedestrians. Fixed 0.1 s step. |
 | `src/sim/metrics.ts` | Queues, delay, throughput, Level of Service A–F, gridlock flag (what the game scores on). |
 | `src/sim/safety.ts` | Collision checks used by the tests. |
+| `src/scenarios/patterns.ts` | Time-of-day patterns, tidal flows, and the maths to look a factor up for any hour. |
 | `src/sim/evaluate.ts` | Headless test runs and paired statistics for the fair test. `src/app/eval.worker.ts` and `fairTest.ts` spread the runs over a pool of workers. |
 | `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |
 | `src/scenarios/templates.ts`, `setup.ts` | Parametric junctions, and the sandbox's choices (shape, lanes, control, crossings, drive side) turned into a Scenario, including an automatic signal plan. |
@@ -64,6 +76,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
   - Vehicles keep their place: on an approach they keep their distance from the far end, inside the junction their progress through the turn, and on an exit their distance to the map edge.
   - Drivers whose turn is gone take the closest allowed exit. New trips for a banned turn are counted as *diverted*.
 - **Delay.** Lost time is accumulated as it happens: below free speed, or waiting to enter the map. It's divided by the number of trips that started in the window. A queue that hasn't cleared still counts, and after an edit only trips that started under the new design count.
+- **Traffic through the day.** Each traffic stream proposes arrivals at its peak rate, and each proposal is kept with probability (rate now ÷ peak rate). This is Poisson thinning. The proposals never depend on the design, so fair tests still see identical traffic, and jumping the clock needs no rescheduling.
 - **Determinism and fair comparisons.** The same scenario and seed always play out identically.
   - Every traffic flow (each origin–destination pair, each crossing) has its own random stream.
   - A vehicle's size and temperament are drawn when it arrives, not when it gets onto the map.

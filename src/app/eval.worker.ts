@@ -11,6 +11,7 @@ export interface EvalJob {
   seed: number;
   warmup: number;
   duration: number;
+  startHour?: number;
 }
 
 export interface EvalResult {
@@ -19,6 +20,6 @@ export interface EvalResult {
 }
 
 self.onmessage = (e: MessageEvent<EvalJob>) => {
-  const { job, scenario, seed, warmup, duration } = e.data;
-  self.postMessage({ job, result: runOnce(scenario, seed, warmup, duration) } satisfies EvalResult);
+  const { job, scenario, seed, warmup, duration, startHour } = e.data;
+  self.postMessage({ job, result: runOnce(scenario, seed, warmup, duration, startHour) } satisfies EvalResult);
 };

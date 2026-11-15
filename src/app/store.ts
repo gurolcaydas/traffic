@@ -3,6 +3,7 @@ import type { Scenario } from '../core/types';
 import type { MetricsSnapshot } from '../sim/metrics';
 import type { SignalClock } from '../sim/signals';
 import { DEFAULT_SETUP, buildScenario, defaultDemand, type Setup } from '../scenarios/setup';
+import { PATTERNS } from '../scenarios/patterns';
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
@@ -34,6 +35,10 @@ interface AppState {
   metrics: MetricsSnapshot | null;
   clock: SignalClock | null;
   simTime: number;
+  /** Clock time in hours while a demand pattern is active. */
+  timeOfDay: number | null;
+  /** A pending request to jump the clock; `n` makes repeated jumps to the same hour distinct. */
+  clockJump: { hour: number; n: number } | null;
   theme: ThemeChoice;
 
   newJunction: (patch: Partial<Setup>) => void;
@@ -42,6 +47,10 @@ interface AppState {
   setVehicleDemand: (from: string, to: string, vehPerHour: number) => void;
   setPedDemand: (leg: string, pedPerHour: number) => void;
   scaleDemand: (factor: number) => void;
+  /** Choose a time-of-day pattern (null for flat traffic). Starts its day now. */
+  setPattern: (id: string | null) => void;
+  setCentreLeg: (leg: string) => void;
+  jumpToHour: (hour: number) => void;
   selectLeg: (leg: string | null) => void;
   pinDesign: () => void;
   setPlaying: (playing: boolean) => void;
@@ -69,6 +78,8 @@ export const useApp = create<AppState>((set, get) => ({
   metrics: null,
   clock: null,
   simTime: 0,
+  timeOfDay: null,
+  clockJump: null,
   theme: 'system',
 
   newJunction: (patch) => {
@@ -122,6 +133,19 @@ export const useApp = create<AppState>((set, get) => ({
     const vehicles = s.demand.vehicles.map((v) => ({ ...v, vehPerHour: Math.max(0, Math.round((v.vehPerHour * factor) / 10) * 10) }));
     set({ scenario: { ...s, demand: { ...s.demand, vehicles } } });
   },
+  setPattern: (id) => {
+    const s = get().scenario;
+    const centre = s.demand.pattern?.centreLeg ?? s.legs[0]!.id;
+    const pattern = id ? PATTERNS[id]!.make(centre) : undefined;
+    set({ scenario: { ...s, demand: { ...s.demand, pattern } }, timeOfDay: pattern ? pattern.startHour : null });
+  },
+  setCentreLeg: (leg) => {
+    const s = get().scenario;
+    if (!s.demand.pattern) return;
+    // Same day and clock, only the direction of the tide changes.
+    set({ scenario: { ...s, demand: { ...s.demand, pattern: { ...s.demand.pattern, centreLeg: leg } } } });
+  },
+  jumpToHour: (hour) => set({ clockJump: { hour, n: (get().clockJump?.n ?? 0) + 1 }, timeOfDay: hour }),
   selectLeg: (leg) => set({ selectedLeg: leg }),
   pinDesign: () => set({ pinnedDesign: { scenario: get().scenario, label: get().lastEdit ?? 'Original layout' } }),
   setPlaying: (playing) => set({ playing }),

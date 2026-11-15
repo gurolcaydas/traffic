@@ -58,7 +58,7 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
         const now = performance.now();
         if (now - lastClockUpdate > 200) {
           lastClockUpdate = now;
-          useApp.setState({ clock: msg.clock, simTime: msg.time });
+          useApp.setState({ clock: msg.clock, simTime: msg.time, timeOfDay: msg.timeOfDay });
         }
       }
     };
@@ -105,6 +105,11 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     renderer?.setSelectedLeg(selectedLeg);
   }, [renderer, selectedLeg]);
+  const clockJump = useApp((s) => s.clockJump);
+  useEffect(() => {
+    if (clockJump) send({ type: 'timeOfDay', hour: clockJump.hour });
+  }, [clockJump]);
+
   useEffect(() => send({ type: playing ? 'play' : 'pause' }), [playing]);
   useEffect(() => send({ type: 'speed', speed }), [speed]);
 

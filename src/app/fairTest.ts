@@ -15,7 +15,7 @@ export interface FairTestRun {
 export function runFairTest(reference: Scenario, candidate: Scenario, plan: TestPlan, onProgress: (fraction: number) => void): FairTestRun {
   const jobs: EvalJob[] = [];
   for (const scenario of [reference, candidate]) {
-    for (const seed of plan.seeds) jobs.push({ job: jobs.length, scenario, seed, warmup: plan.warmup, duration: plan.duration });
+    for (const seed of plan.seeds) jobs.push({ job: jobs.length, scenario, seed, warmup: plan.warmup, duration: plan.duration, startHour: plan.startHour });
   }
   const size = Math.max(1, Math.min(jobs.length, (navigator.hardwareConcurrency || 4) - 1, 6));
   const workers = Array.from({ length: size }, () => new Worker(new URL('./eval.worker.ts', import.meta.url), { type: 'module' }));

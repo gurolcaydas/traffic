@@ -1,6 +1,7 @@
 // Fair, repeatable testing of a design: run it headless several times with different random
 // traffic, and compare two designs run for run on exactly the same traffic.
-import type { Scenario } from '../core/types';
+import type { DemandPattern, Scenario } from '../core/types';
+import { busiestWindow } from '../scenarios/patterns';
 import { levelOfService, type Los } from './metrics';
 import { Simulation } from './simulation';
 
@@ -11,7 +12,15 @@ export interface TestPlan {
   warmup: number;
   /** Seconds measured. */
   duration: number;
+  /** With a demand pattern: the clock time measuring starts at, in hours. */
+  startHour?: number;
 }
+
+/** Which part of a patterned day a test covers. */
+export type TestWindow = 'peak' | 'day';
+
+/** Hours in the "busiest hours" window. */
+export const PEAK_HOURS = 3;
 
 export const TEST_PLANS = {
   quick: { label: 'Quick', runs: 4, minutes: 15 },
@@ -21,9 +30,13 @@ export const TEST_PLANS = {
 
 export type TestLength = keyof typeof TEST_PLANS;
 
-export function makePlan(length: TestLength): TestPlan {
+export function makePlan(length: TestLength, pattern?: DemandPattern, window: TestWindow = 'peak'): TestPlan {
   const p = TEST_PLANS[length];
-  return { seeds: Array.from({ length: p.runs }, (_, i) => 101 + i), warmup: 300, duration: p.minutes * 60 };
+  const seeds = Array.from({ length: p.runs }, (_, i) => 101 + i);
+  if (!pattern) return { seeds, warmup: 300, duration: p.minutes * 60 };
+  // With a pattern, the window decides how long each run is; the test length only sets how many runs.
+  if (window === 'day') return { seeds, warmup: 900, duration: (pattern.endHour - pattern.startHour) * 3600, startHour: pattern.startHour };
+  return { seeds, warmup: 1800, duration: PEAK_HOURS * 3600, startHour: busiestWindow(pattern, PEAK_HOURS) };
 }
 
 /** What one run measured. */
@@ -35,11 +48,15 @@ export interface RunResult {
   worstQueue: number;
   pedWait: number;
   divertedPerHour: number;
+  /** Average delay in the worst 15 minutes of the run. */
+  worst15Delay: number;
   gridlock: boolean;
 }
 
-export function runOnce(scenario: Scenario, seed: number, warmup: number, duration: number): RunResult {
+export function runOnce(scenario: Scenario, seed: number, warmup: number, duration: number, startHour?: number): RunResult {
   const sim = new Simulation({ ...scenario, seed });
+  // Start the clock early enough that warm-up ends exactly when measuring should begin.
+  if (startHour !== undefined && scenario.demand.pattern) sim.setTimeOfDay(startHour - warmup / 3600);
   sim.run(warmup);
   sim.resetMetrics();
   sim.run(duration);
@@ -51,11 +68,12 @@ export function runOnce(scenario: Scenario, seed: number, warmup: number, durati
     worstQueue: Math.max(0, ...m.legs.map((l) => l.maxQueue)),
     pedWait: m.pedAvgWait,
     divertedPerHour: (m.diverted / m.window) * 3600,
+    worst15Delay: m.worst15Delay,
     gridlock: m.gridlock,
   };
 }
 
-export type MetricKey = 'avgDelay' | 'throughput' | 'worstQueue' | 'pedWait' | 'divertedPerHour';
+export type MetricKey = 'avgDelay' | 'worst15Delay' | 'throughput' | 'worstQueue' | 'pedWait' | 'divertedPerHour';
 
 /** Mean and the half-width of its 95% confidence interval. */
 export interface Estimate {
@@ -66,6 +84,7 @@ export interface Estimate {
 export interface DesignSummary {
   runs: RunResult[];
   avgDelay: Estimate;
+  worst15Delay: Estimate;
   throughput: Estimate;
   worstQueue: Estimate;
   pedWait: Estimate;
@@ -81,6 +100,7 @@ export function summarize(runs: RunResult[], signalised: boolean): DesignSummary
   return {
     runs,
     avgDelay,
+    worst15Delay: est('worst15Delay'),
     throughput: est('throughput'),
     worstQueue: est('worstQueue'),
     pedWait: est('pedWait'),

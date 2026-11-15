@@ -53,6 +53,27 @@ export interface PedestrianDemand {
   pedPerHour: number;
 }
 
+/**
+ * How traffic varies through a simulated day. The demand table is the peak-hour traffic;
+ * the pattern scales it hour by hour, and can tilt it towards or away from the city centre.
+ */
+export interface DemandPattern {
+  /** Preset id, for the UI. */
+  id: string;
+  /** Clock time the day starts and ends, in hours (6.5 = 06:30). */
+  startHour: number;
+  endHour: number;
+  /** Share of the table's traffic through the day, piecewise linear: [hour, factor]. */
+  points: Array<[number, number]>;
+  /**
+   * Tidal flow, piecewise linear: +1 = everyone heading to the centre (morning commute),
+   * -1 = everyone leaving it (evening), 0 = balanced.
+   */
+  tide?: Array<[number, number]>;
+  /** The leg that leads towards the city centre (or the stadium, school, ...). */
+  centreLeg?: LegId;
+}
+
 export interface SignalPhase {
   /** Green time in seconds. */
   green: number;
@@ -91,6 +112,8 @@ export interface Scenario {
   demand: {
     vehicles: VehicleDemand[];
     pedestrians: PedestrianDemand[];
+    /** Time-of-day pattern. Without one, traffic is the table's, all day long. */
+    pattern?: DemandPattern;
   };
 }
 
