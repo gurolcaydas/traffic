@@ -12,6 +12,7 @@ import {
   type Vec2,
 } from '../core/geometry';
 import { DEFAULTS, type LegSpec, type Scenario } from '../core/types';
+import { SPLITTER_WIDTH, entryDistance, ringPath, ringRelations, roundaboutCorners, roundaboutGeometry } from './roundabout';
 import {
   movementKey,
   type ConflictRef,
@@ -21,6 +22,7 @@ import {
   type LaneRole,
   type LegGeometry,
   type Network,
+  type RoundaboutGeometry,
   type TurnKind,
 } from './network';
 
@@ -35,7 +37,8 @@ const CURB_RETURN = 5;
 export function buildNetwork(scenario: Scenario): Network {
   const side = scenario.driveSide === 'right' ? 1 : -1;
   const flyPartner = flyoverPartners(scenario);
-  const legs = buildLegGeometry(scenario, side, flyPartner);
+  const rb = scenario.control.type === 'roundabout' ? roundaboutGeometry(scenario) : null;
+  const legs = buildLegGeometry(scenario, side, flyPartner, rb);
 
   // Lanes. Inbound, from the median outwards: flyover lane, regular lanes, slip lane.
   const lanes: Lane[] = [];
@@ -67,7 +70,11 @@ export function buildNetwork(scenario: Scenario): Network {
   const movementLanes = new Map<string, number[]>();
   const connectorsFromLane = new Map<number, number[]>();
   const addConnector = (from: LegSpec, to: LegSpec, inLane: number, outLane: number, turn: TurnKind, kind: Connector['kind'], maxRadius: number) => {
-    const path = connectorPath(lanes[inLane]!.path, lanes[outLane]!.path, maxRadius);
+    // On a roundabout, ordinary movements go round the ring; slip lanes and flyovers bypass it.
+    const onRing = rb && kind === 'normal'
+      ? ringPath(rb, legs.get(from.id)!, lanes[inLane]!.path, legs.get(to.id)!, lanes[outLane]!.path)
+      : null;
+    const path = onRing?.path ?? connectorPath(lanes[inLane]!.path, lanes[outLane]!.path, maxRadius);
     const curveSpeed = Math.sqrt(LATERAL_ACCEL * path.minRadius());
     const idx = connectors.length;
     connectors.push({
@@ -86,6 +93,8 @@ export function buildNetwork(scenario: Scenario): Network {
       siblings: [],
       crosswalkCrossings: [],
       greenPhases: [],
+      ring: onRing?.ring,
+      ringShares: [],
     });
     connectorsFromLane.set(inLane, [...(connectorsFromLane.get(inLane) ?? []), idx]);
     const key = movementKey(from.id, to.id);
@@ -126,7 +135,8 @@ export function buildNetwork(scenario: Scenario): Network {
       const lo = Math.floor((rank * n) / k);
       const hi = Math.max(lo, Math.ceil(((rank + 1) * n) / k) - 1);
       for (let l = lo; l <= hi; l++) {
-        const outIndex = turn === 'far' ? clamp(to.lanesOut - 1 - (hi - l), 0, to.lanesOut - 1) : clamp(l - lo, 0, to.lanesOut - 1);
+        // A one-lane roundabout has one-lane exits: everyone leaves into the curb lane.
+        const outIndex = rb ? 0 : turn === 'far' ? clamp(to.lanesOut - 1 - (hi - l), 0, to.lanesOut - 1) : clamp(l - lo, 0, to.lanesOut - 1);
         const inLane = laneOf.get(`${from.id}/in/${l}`)!;
         const outLane = laneOf.get(`${to.id}/out/${outIndex}`)!;
         // A near-side turn follows the curb return, keeping its lane's distance from the curb.
@@ -138,13 +148,13 @@ export function buildNetwork(scenario: Scenario): Network {
   }
 
   assignSignalPhases(scenario, connectors);
-  findConflicts(scenario, legs, connectors, side);
+  findConflicts(scenario, legs, connectors, side, rb);
 
   const crosswalks = buildCrosswalks(scenario, legs, connectors);
 
-  const corners = buildCorners(legs, side);
+  const corners = rb ? roundaboutCorners(rb, legs, side) : buildCorners(legs, side);
 
-  return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes, corners };
+  return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes, corners, roundabout: rb };
 }
 
 /** Each leg's flyover partner, for pairs where both legs exist. */
@@ -164,7 +174,7 @@ const SLIP_SETBACK = 30;
 /** Painted buffer between the main road and the slip lane, widening into the corner island. */
 const SLIP_BUFFER = 1;
 
-function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<string, string>): Map<string, LegGeometry> {
+function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<string, string>, rb: RoundaboutGeometry | null): Map<string, LegGeometry> {
   const specs = [...scenario.legs].sort((a, b) => norm360(a.angle) - norm360(b.angle));
   const fly = (s: LegSpec) => (flyPartner.has(s.id) ? 1 : 0);
   const halfWidth = (s: LegSpec) =>
@@ -191,13 +201,15 @@ function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<stri
       const h = Math.max(halfWidth(spec), halfWidth(nb));
       corner = Math.max(corner, gap >= 179 ? h : h / Math.tan(((gap / 2) * Math.PI) / 180));
     }
-    const boxEdge = corner + CURB_RETURN;
+    // At a roundabout the give-way line sits just outside the ring.
+    const boxEdge = rb ? entryDistance(rb) : corner + CURB_RETURN;
     const cw = hasCrosswalk.has(spec.id);
     const crosswalkCenter = cw ? boxEdge + DEFAULTS.crosswalkWidth / 2 : null;
     const stopLine = cw ? boxEdge + DEFAULTS.crosswalkWidth + 1 : boxEdge;
     const dir = fromAngleDeg(spec.angle);
     const laneWidth = spec.laneWidth ?? DEFAULTS.laneWidth;
-    const medianWidth = spec.medianWidth ?? DEFAULTS.medianWidth;
+    // Roundabout legs get a splitter island between their entry and exit lanes.
+    const medianWidth = Math.max(spec.medianWidth ?? DEFAULTS.medianWidth, rb ? SPLITTER_WIDTH : 0);
     const inEdge = medianWidth / 2 + (fly(spec) + spec.lanesIn) * laneWidth;
     const outEdge = medianWidth / 2 + (fly(spec) + spec.lanesOut) * laneWidth;
     const slip = slipTarget.has(spec.id);
@@ -317,7 +329,7 @@ function aYieldsToB(scenario: Scenario, legs: Map<string, LegGeometry>, a: Conne
   return a.idx > b.idx;
 }
 
-function findConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, connectors: Connector[], side: number) {
+function findConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, connectors: Connector[], side: number, roundabout: RoundaboutGeometry | null) {
   for (let i = 0; i < connectors.length; i++) {
     for (let j = i + 1; j < connectors.length; j++) {
       const a = connectors[i]!;
@@ -327,6 +339,11 @@ function findConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, conne
         // Diverging from one lane: car-following until the paths have split apart.
         a.siblings.push({ other: j, until: closeStretch(b.path, a.path)?.[1] ?? 0 });
         b.siblings.push({ other: i, until: closeStretch(a.path, b.path)?.[1] ?? 0 });
+        continue;
+      }
+      if (roundabout && a.ring && b.ring) {
+        // On the ring, the rules come from its structure rather than from how close paths come.
+        ringRelations(roundabout, a, b);
         continue;
       }
 

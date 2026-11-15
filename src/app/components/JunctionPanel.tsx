@@ -15,7 +15,7 @@ import {
 import { currentSetup, useApp } from '../store';
 import { Segmented } from './Segmented';
 
-const CONTROL_LABEL = { right: 'yield to right', major: 'major road', signals: 'signals' } as const;
+const CONTROL_LABEL = { right: 'yield to right', major: 'major road', signals: 'signals', roundabout: 'roundabout' } as const;
 
 export function JunctionPanel() {
   const scenario = useApp((s) => s.scenario);
@@ -48,6 +48,7 @@ export function JunctionPanel() {
             { value: 'right', label: 'Yield to right', title: 'No signs: give way to traffic from the right' },
             { value: 'major', label: 'Major road', title: 'The straightest road has priority' },
             { value: 'signals', label: 'Signals' },
+            { value: 'roundabout', label: 'Roundabout', title: 'Entering traffic gives way to traffic already on the ring' },
           ]}
           onChange={(choice) => edit(`Control: ${CONTROL_LABEL[choice]}`, (d) => setControl(d, choice))}
         />

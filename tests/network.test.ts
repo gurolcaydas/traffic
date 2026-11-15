@@ -140,6 +140,11 @@ describe('buildNetwork: curb clearance', () => {
     crossroad({ angles: [0, 180, 270] }),
     crossroad({ angles: [90, 210, 330], lanes: 2 }),
     crossroad({ angles: [0, 70, 145, 215, 290] }),
+    crossroad({ control: { type: 'roundabout' } }),
+    crossroad({ control: { type: 'roundabout' }, lanes: 2, crosswalks: 'zebra' }),
+    crossroad({ control: { type: 'roundabout' }, driveSide: 'left' }),
+    crossroad({ control: { type: 'roundabout' }, angles: [0, 70, 145, 215, 290] }),
+    crossroad({ control: { type: 'roundabout' }, angles: [0, 180, 270] }),
   ];
   layouts.forEach((scenario, i) => {
     it(`keeps every turn path clear of the curbs (layout ${i + 1})`, () => {
@@ -220,5 +225,37 @@ describe('buildNetwork: editing features', () => {
     }
     // Turns from the flyover legs still use the ground-level lanes.
     expect(net.lanes[find(net, '1', '4')[0]!.inLane]!.role).toBe('regular');
+  });
+});
+
+describe('buildNetwork: roundabouts', () => {
+  const net = buildNetwork(crossroad({ control: { type: 'roundabout' } }));
+
+  it('sends every movement round the ring, at ring speed rather than crawling', () => {
+    expect(net.roundabout).not.toBeNull();
+    for (const c of net.connectors) {
+      expect(c.ring).toBeDefined();
+      expect(c.speedLimit).toBeGreaterThan(5.5);
+    }
+    // Right turn: shortest way round. Left turn: three quarters.
+    const near = find(net, '1', '2')[0]!.ring!.length;
+    const far = find(net, '1', '4')[0]!.ring!.length;
+    expect(far).toBeGreaterThan(near * 2.5);
+  });
+
+  it('makes entering traffic give way to traffic already circulating, never the reverse', () => {
+    for (const c of net.connectors) {
+      for (const ref of c.conflicts) {
+        // A movement only ever gives way where it joins the ring.
+        if (ref.yields) expect(ref.s).toBeLessThan(c.ring!.start + 1);
+      }
+    }
+    expect(net.connectors.some((c) => c.conflicts.some((r) => r.yields))).toBe(true);
+  });
+
+  it('lets movements from different entries follow each other round shared stretches of ring', () => {
+    const through = find(net, '1', '3')[0]!;
+    const fromSouth = find(net, '4', '3')[0]!;
+    expect(through.ringShares.some((s) => s.other === fromSouth.idx)).toBe(true);
   });
 });

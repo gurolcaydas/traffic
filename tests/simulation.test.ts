@@ -303,3 +303,61 @@ describe('Lane changing', () => {
     expect(sim.counts().laneChanges).toBeGreaterThan(30);
   });
 });
+
+describe('Roundabouts', () => {
+  const ring = (opts: Parameters<typeof crossroad>[0] = {}) => crossroad({ ...opts, control: { type: 'roundabout' } });
+
+  for (const [name, scenario] of [
+    ['light', ring({ vehPerHourPerLeg: 250 })],
+    ['heavy', ring({ vehPerHourPerLeg: 550 })],
+    ['left-hand', ring({ vehPerHourPerLeg: 400, driveSide: 'left' })],
+    ['two lanes in, zebras', ring({ vehPerHourPerLeg: 450, lanes: 2, crosswalks: 'zebra', pedPerHourPerCrosswalk: 100 })],
+    ['5-way', ring({ vehPerHourPerLeg: 300, angles: [0, 70, 145, 215, 290] })],
+  ] as const) {
+    it(`runs collision-free: ${name}`, () => {
+      const { sim, collisions, strikes } = runChecked(scenario, 900);
+      expect(collisions).toBe(0);
+      expect(strikes).toBe(0);
+      expect(sim.getMetrics().completed).toBeGreaterThan(100);
+    }, 20000);
+  }
+
+  it('circulates counter-clockwise in right-hand traffic and clockwise in left-hand', () => {
+    for (const [driveSide, sign] of [['right', 1], ['left', -1]] as const) {
+      const sim = new Simulation(ring({ vehPerHourPerLeg: 300, driveSide }));
+      sim.run(120);
+      const onRing = sim.vehicles.filter((v) => v.seg === 1 && v.s > sim.network.connectors[v.connector]!.ring!.start + 2 && v.v > 1);
+      expect(onRing.length).toBeGreaterThan(0);
+      for (const v of onRing) {
+        const p = sim.pose(v);
+        // Angular direction round the centre: sign of position × heading.
+        expect(Math.sign(p.x * Math.sin(p.heading) - p.y * Math.cos(p.heading))).toBe(sign);
+      }
+    }
+  });
+
+  it('beats two-phase signals at moderate traffic', () => {
+    const delay = (s: Scenario) => {
+      const sim = new Simulation(s);
+      sim.run(300);
+      sim.resetMetrics();
+      sim.run(1800);
+      return sim.getMetrics().avgDelay;
+    };
+    expect(delay(ring({ vehPerHourPerLeg: 350 }))).toBeLessThan(delay(crossroad({ vehPerHourPerLeg: 350, control: twoPhaseSignals(25) })));
+  }, 20000);
+
+  it('can be built live under running traffic, and taken away again', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 400 }));
+    sim.run(120);
+    for (const control of [{ type: 'roundabout' as const }, twoPhaseSignals(25), { type: 'roundabout' as const }]) {
+      const next = structuredClone(sim.scenario);
+      next.control = control;
+      sim.applyScenario(next);
+      sim.run(300);
+      const c = sim.counts();
+      expect(c.arrived).toBe(c.exited + c.onMap + c.backlog + c.diverted + c.removed);
+    }
+    expect(sim.getMetrics().gridlock).toBe(false);
+  }, 20000);
+});

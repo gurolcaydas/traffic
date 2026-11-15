@@ -95,6 +95,37 @@ export interface Connector {
   crosswalkCrossings: Array<{ crosswalk: number; s: number; sCrosswalk: number }>;
   /** Signal phases in which this connector has green. Empty for non-signalised control. */
   greenPhases: number[];
+  /** On a roundabout: where this movement joins and leaves the ring. */
+  ring?: RingSpan;
+  /**
+   * Stretches of ring this movement shares with another (from different entry lanes): between `from`
+   * and `to` along this connector, the other connector's position is `s + offset`. Vehicles there
+   * follow each other like cars in one lane.
+   */
+  ringShares: Array<{ other: number; from: number; to: number; offset: number }>;
+}
+
+export interface RingSpan {
+  /** Ring coordinates (arc length round the ring centreline, in the direction of travel). */
+  entry: number;
+  /** Arc length driven on the ring. */
+  length: number;
+  /** Position along the connector where the ring part begins (the entry curve's length). */
+  start: number;
+  /** How far before joining (along the entry curve) the car is already alongside the ring's lane. */
+  joinZone: number;
+  /** How far after leaving (along the exit curve) the car is still alongside the ring's lane. */
+  leaveZone: number;
+}
+
+export interface RoundaboutGeometry {
+  /** Radius of the circulating lane's centreline. */
+  radius: number;
+  ringWidth: number;
+  islandRadius: number;
+  outerRadius: number;
+  /** +1 counter-clockwise (right-hand traffic), -1 clockwise. */
+  direction: number;
 }
 
 export interface Crosswalk {
@@ -120,6 +151,7 @@ export interface Network {
   movementLanes: Map<string, number[]>;
   /** Curb returns between neighbouring legs, as polylines from one leg's edge round to the next. */
   corners: Vec2[][];
+  roundabout: RoundaboutGeometry | null;
 }
 
 export const movementKey = (from: LegId, to: LegId) => `${from}>${to}`;

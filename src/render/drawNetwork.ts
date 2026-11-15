@@ -40,8 +40,10 @@ export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
   for (const leg of legs) {
     const inStop = leg.slipEnd ?? leg.length;
     const outStop = leg.slipOutStart ?? leg.length;
-    line(g, along(leg, leg.boxEdge, leg.inEdge), along(leg, inStop, leg.inEdge));
-    line(g, along(leg, leg.boxEdge, -leg.outEdge), along(leg, outStop, -leg.outEdge));
+    // At a roundabout the corner curbs take over from the give-way line inwards.
+    const curbStart = net.roundabout ? leg.stopLine : leg.boxEdge;
+    line(g, along(leg, curbStart, leg.inEdge), along(leg, inStop, leg.inEdge));
+    line(g, along(leg, curbStart, -leg.outEdge), along(leg, outStop, -leg.outEdge));
     if (leg.slipEdge !== null) {
       line(g, along(leg, leg.slipEnd!, leg.slipEdge), along(leg, leg.length, leg.slipEdge));
       line(g, along(leg, leg.slipEnd!, leg.inEdge), along(leg, leg.slipEnd!, leg.slipEdge - leg.laneWidth)); // island nose
@@ -95,6 +97,8 @@ export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
   // Stroke now: any fill below would otherwise consume these line segments.
   g.stroke({ width: LINE, color: t.marking, cap: 'butt' });
 
+  if (net.roundabout) drawRoundaboutIslands(g, net, t);
+
   // Stop or give-way lines across the regular lanes, and turn arrows.
   const control = net.scenario.control;
   for (const leg of legs) {
@@ -105,7 +109,7 @@ export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
     if (control.type === 'signals') {
       line(g, along(leg, leg.stopLine, lo), along(leg, leg.stopLine, hi));
       g.stroke({ width: 0.45, color: t.marking });
-    } else if (!control.major.includes(leg.id)) {
+    } else if (control.type === 'roundabout' || !control.major.includes(leg.id)) {
       giveWay(g, leg, lo, hi, t);
     }
   }
@@ -122,6 +126,28 @@ export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
     for (let o = -leg.outEdge + 0.4; o < leg.inEdge - 0.2; o += 1.0) {
       g.poly(flat(strip(leg, c - cw.width / 2, c + cw.width / 2, o, o + 0.5))).fill(t.marking);
     }
+  }
+}
+
+/** Central island (with a truck apron) and the splitter islands between each leg's entry and exit. */
+function drawRoundaboutIslands(g: Graphics, net: Network, t: CanvasTheme) {
+  const rb = net.roundabout!;
+  // Truck apron: a slightly raised ring at the island's edge, then the island itself.
+  g.circle(0, 0, rb.islandRadius).fill({ color: t.curb, alpha: 0.12 }).stroke({ width: CURB, color: t.curb });
+  g.circle(0, 0, rb.islandRadius - 1.4).fill(t.ground).stroke({ width: CURB, color: t.curb });
+
+  for (const leg of net.legs.values()) {
+    const w = leg.medianWidth / 2 - 0.25;
+    if (w <= 0.2) continue;
+    const s0 = rb.outerRadius + 1.2;
+    const s1 = leg.stopLine + 14;
+    // Rounded nose at the ring end, a point at the far end.
+    const nose = Array.from({ length: 9 }, (_, k) => {
+      const a = Math.PI / 2 + (Math.PI * k) / 8; // from the inbound side round to the outbound side
+      return along(leg, s0 + w + w * Math.cos(a), w * Math.sin(a));
+    });
+    const island = [...nose, along(leg, s1 - 4, -w), along(leg, s1, 0), along(leg, s1 - 4, w)];
+    g.poly(flat(island)).fill(t.ground).stroke({ width: CURB, color: t.curb, join: 'round' });
   }
 }
 

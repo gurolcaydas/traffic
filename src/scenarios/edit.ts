@@ -8,12 +8,14 @@ export type CrossingChoice = 'none' | CrosswalkType;
 
 export function controlChoice(s: Scenario): ControlChoice {
   if (s.control.type === 'signals') return 'signals';
+  if (s.control.type === 'roundabout') return 'roundabout';
   return s.control.major.length ? 'major' : 'right';
 }
 
 export function setControl(s: Scenario, choice: ControlChoice, green = 25) {
   if (choice === 'right') s.control = { type: 'priority', major: [] };
   else if (choice === 'major') s.control = { type: 'priority', major: straightestPair(s) };
+  else if (choice === 'roundabout') s.control = { type: 'roundabout' };
   else s.control = { type: 'signals', phases: autoSignalPlan(s.legs, green) };
 }
 

@@ -96,6 +96,10 @@ export type ControlSpec =
       amber?: number;
       /** Seconds of all-red after each amber. Default 2. */
       allRed?: number;
+    }
+  | {
+      /** One-lane roundabout: entering traffic gives way to traffic already circulating. */
+      type: 'roundabout';
     };
 
 export interface Scenario {

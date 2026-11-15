@@ -864,6 +864,18 @@ export class Simulation {
       }
     }
 
+    // On a roundabout: cars from other entries ahead of us on the same stretch of ring.
+    if (veh.seg !== 2) {
+      const base = veh.seg === 0 ? inLen : 0;
+      for (const share of net.connectors[veh.connector]!.ringShares) {
+        for (const x of this.connVehicles[share.other]!) {
+          const front = x.s - share.offset; // x's front bumper, measured along our path
+          if (front < share.from || front - x.length > share.to) continue; // not on the shared stretch
+          if (base + front > veh.s) consider(x, base + front);
+        }
+      }
+    }
+
     // Vehicles that took a different turn from the same lane share the first stretch of the
     // junction with us until the paths split, so they are leaders until their rear has left it.
     if (veh.seg !== 2) {
@@ -945,11 +957,13 @@ export class Simulation {
     // Giving way: assume priority traffic may speed up a little, to be safe. Having priority but
     // respecting someone who committed to a gap: they accelerate briskly through it, as real drivers do.
     const accel = yielding ? PRIORITY_ACCEL : GAP_ACCEL;
-    const vmax = yielding ? otherIn.speedLimit : other.speedLimit;
 
     const zoneLength = c.sOtherEnd - c.sOther;
-    /** `distance` is from x's front to the start of the shared stretch on its path. */
-    const check = (x: Vehicle, distance: number): boolean => {
+    /**
+     * `distance` is from x's front to the start of the shared stretch on its path. `vmax` is the
+     * fastest x can go there: the road's limit on the approach, the curve's limit once in the junction.
+     */
+    const check = (x: Vehicle, distance: number, vmax: number): boolean => {
       if (distance < -(zoneLength + x.length)) return false; // already cleared the conflict
       if (distance < 0.5 && (yielding || myArrive < OCCUPIED_HORIZON)) return true; // inside the zone right now
       const arrive = timeToTravel(Math.max(0, distance), x.v, accel, vmax);
@@ -964,7 +978,7 @@ export class Simulation {
       // A driver waiting inside the box for a gap is waiting for us, not the other way round.
       if (!yielding && x.v < QUEUED_SPEED) continue;
       if (holdsBefore(x)) continue;
-      if (check(x, c.sOther - x.s)) return true;
+      if (check(x, c.sOther - x.s, other.speedLimit)) return true;
     }
     for (const x of this.laneVehicles[other.inLane]!) {
       const toLine = otherIn.path.length - x.s;
@@ -973,8 +987,10 @@ export class Simulation {
         const distance = toLine + c.sOther;
         if (distance > PRIORITY_LOOKBACK) break;
         const held = otherSignal === 'red' && !x.committed;
-        const relevant = yielding ? !held && !refused : x.committed && !holdsBefore(x);
-        if (relevant && check(x, distance)) return true;
+        // Entering a roundabout, cars still approaching other entries have to give way themselves.
+        const ringMerge = !!other.ring && !!net.connectors[veh.connector]!.ring;
+        const relevant = yielding ? !held && !refused && (!ringMerge || x.committed) : x.committed && !holdsBefore(x);
+        if (relevant && check(x, distance, yielding ? otherIn.speedLimit : other.speedLimit)) return true;
       }
       // Everyone queued behind a driver who is stopping at the line is stuck behind them too.
       if (refused) break;

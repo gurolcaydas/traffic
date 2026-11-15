@@ -27,7 +27,7 @@ The demand table then counts as the peak hour, and the pattern scales it hour by
 
 The sidebar shows the day as a chart: click it to jump the clock. The metrics include the **worst 15 minutes**, and the fair test can cover the busiest 3 hours or the whole day.
 
-Roundabouts are next (Phase 2b).
+**Roundabouts (Phase 2b)** are a fourth control option, switchable live. They're one-lane roundabouts: entering traffic gives way to traffic already on the ring. Side roads and flyovers work with them too.
 
 ## Commands
 
@@ -49,6 +49,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/sim/simulation.ts` | The engine: vehicles (IDM car-following), gap acceptance, signals, pedestrians. Fixed 0.1 s step. |
 | `src/sim/metrics.ts` | Queues, delay, throughput, Level of Service A–F, gridlock flag (what the game scores on). |
 | `src/sim/safety.ts` | Collision checks used by the tests. |
+| `src/network/roundabout.ts` | Roundabout geometry (ring size, tangent entry and exit curves, flared curbs) and the ring's rules. |
 | `src/scenarios/patterns.ts` | Time-of-day patterns, tidal flows, and the maths to look a factor up for any hour. |
 | `src/sim/evaluate.ts` | Headless test runs and paired statistics for the fair test. `src/app/eval.worker.ts` and `fairTest.ts` spread the runs over a pool of workers. |
 | `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |
@@ -80,6 +81,12 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
   - *Safety:* a change is never allowed if the changer or its new follower would have to brake harder than 4 m/s².
   - *Where:* no changes by choice in the solid-line zone before the stop line, nor in the first 30 m after entering the map.
   - *Motion:* each change slides sideways over 3 s, and the car keeps blocking its old lane until it's mostly across.
+- **Roundabouts.** Each movement is one path: an entry curve, an arc round the ring, an exit curve.
+  - *Geometry:* entry and exit curves are circular arcs tangent to both the lane and the ring, so traffic keeps ring speed (about 23 km/h) instead of crawling. Curbs flare along the same curves.
+  - *Ring size:* the ring is the smallest one on which every entry joins well before the next leg's exit leaves.
+  - *Rules from structure, not proximity:* movements that share a stretch of ring follow each other like cars in one lane. A movement joining the ring gives way to everyone already circulating past that point, from where it first comes alongside the ring.
+  - *One lane:* several approach lanes enter single file, and all exits use the curb lane.
+  - *Capacity:* about 1650 veh/h, in line with published figures for one-lane roundabouts.
 - **Slip lanes and flyovers.**
   - A slip lane is an extra curb lane that peels off before the junction, curves around a corner island, and joins the next road as an added lane. It ignores the signals.
   - A flyover gives straight-through traffic its own lane on a bridge. Bridge traffic never conflicts with traffic or pedestrians below.
