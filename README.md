@@ -66,6 +66,11 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 - **Entering the junction.** Near the stop line, a driver checks the signal, the room on the exit lane, conflicting traffic and pedestrians. When cleared, it *commits*.
   - Committed vehicles act as reservations: drivers with priority still respect them, and drivers who must give way ignore anyone already told to wait.
   - Under signals, turners may pull forward and wait inside the box for a gap.
+- **Signals.**
+  - A controller runs the plan phase by phase: green, amber (3 s), all-red (2 s).
+  - When the plan is edited it keeps its place. Lengthening a green extends the green that is showing; cutting it shorter than it has already shown ends it at once. Lights never jump mid-flow.
+  - Cars arriving on green with no queue cross at about 95% of the speed limit.
+  - A queue discharges at about 1870 veh/h of green per lane, so a longer green carries more cars once traffic is saturated.
 - **Pedestrians.** On a zebra, pedestrians have priority. On a signalised crossing, they walk only during their phase. Either way, they never step in front of a vehicle that can no longer stop.
 - **Turn paths.** Each turn is a straight run, a circular arc, then another straight run. Right turns (left turns in left-hand traffic) follow the curb return, so they keep their lane's distance from the curb. A test checks that every path stays on the asphalt.
 - **Calibration.** A single lane discharges about 1900 veh/h. Signal delays track Webster's formula, and a typical permissive junction gives LOS C at 200 veh/h per leg.

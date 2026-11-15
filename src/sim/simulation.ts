@@ -5,7 +5,7 @@ import { movementKey, type ConflictRef, type Connector, type Network } from '../
 import { demandFactor, maxDemandFactor, pedFactor } from '../scenarios/patterns';
 import { DEFAULT_IDM, MAX_DECEL, idm, stoppingDistance, timeToTravel, type IdmParams } from './kinematics';
 import { MetricsCollector, type MetricsSnapshot } from './metrics';
-import { connectorSignal, signalClock, stateFor, type SignalClock } from './signals';
+import { SignalController, connectorSignal, stateFor, type SignalClock } from './signals';
 
 /** Where a vehicle is on its route: approach lane, junction connector, exit lane. */
 export type Segment = 0 | 1 | 2;
@@ -35,6 +35,11 @@ export interface Vehicle {
   lcFrom: number | null;
   lcT: number;
   lastLaneChange: number;
+  /**
+   * Where along its turn this vehicle will stop and wait for a gap (pulled forward into the box),
+   * or null if it is clear to go. Drivers with priority ignore it for conflicts beyond this point.
+   */
+  holdAt: number | null;
 }
 
 export interface Pedestrian {
@@ -69,6 +74,10 @@ const PRIORITY_LOOKBACK = 150;
 /** Extra seconds of clearance required behind a priority vehicle. */
 const CROSS_MARGIN = 0.8;
 const MERGE_HEADWAY = 1.2;
+/** Margin a driver with priority keeps from someone who has already committed to cross. */
+const COMMITTED_MARGIN = 0.3;
+/** A car in a conflict zone only holds back drivers who would reach that zone within this many seconds. */
+const OCCUPIED_HORIZON = 2.5;
 /** Acceleration a driver counts on when pulling out into a gap. */
 const GAP_ACCEL = 2.5;
 /** Acceleration assumed for approaching priority traffic (they may speed up a little). */
@@ -109,6 +118,7 @@ export class Simulation {
   vehicles: Vehicle[] = [];
   pedestrians: Pedestrian[] = [];
   clock: SignalClock | null = null;
+  private signals: SignalController;
 
   /**
    * One random stream per traffic flow, keyed by name. Arrivals and vehicle traits come only from
@@ -148,6 +158,7 @@ export class Simulation {
     this.dt = opts.dt ?? DT_DEFAULT;
 
     for (const leg of scenario.legs) this.backlog.set(leg.id, []);
+    this.signals = new SignalController(scenario.control);
     this.dayStart = (scenario.demand.pattern?.startHour ?? 0) * 3600;
     this.nextVehicleArrival = scenario.demand.vehicles.map((d) => this.vehStream(d).exponential(this.peakVehRate(d.vehPerHour)));
     this.nextPedArrival = scenario.demand.pedestrians.map((d) => this.pedStream(d).exponential(this.peakPedRate(d.pedPerHour)));
@@ -162,7 +173,7 @@ export class Simulation {
 
   step() {
     const dt = this.dt;
-    this.clock = signalClock(this.scenario.control, this.time);
+    this.clock = this.signals.clock();
     this.arrive();
     this.spawn();
     this.index();
@@ -176,6 +187,7 @@ export class Simulation {
     this.updatePedestrians(dt);
     this.observeQueues();
     this.accumulateDelay(dt);
+    this.signals.step(dt);
     this.time += dt;
     this.stepCount++;
   }
@@ -249,11 +261,14 @@ export class Simulation {
     const net = buildNetwork(next);
     this.network = net;
     this.scenario = next;
+    this.signals.setControl(next.control);
+    this.clock = this.signals.clock();
     this.regularIn.clear();
     this.mergeRequests.clear();
     for (const veh of this.vehicles) {
       veh.lcFrom = null;
       veh.lcT = 1;
+      veh.holdAt = null;
     }
 
     for (const leg of next.legs) if (!this.backlog.has(leg.id)) this.backlog.set(leg.id, []);
@@ -528,6 +543,7 @@ export class Simulation {
         lcFrom: null,
         lcT: 1,
         lastLaneChange: -Infinity,
+        holdAt: null,
       };
       this.vehicles.push(veh);
       this.laneVehicles[best]!.push(veh);
@@ -647,6 +663,9 @@ export class Simulation {
 
   private doLaneChange(veh: Vehicle, target: number) {
     const conn = this.connectorFor(target, veh.to);
+    // Visible at once to the drivers deciding after us this tick, so two cars can't take the same gap.
+    this.laneVehicles[target]!.push(veh);
+    this.laneGhosts[veh.inLane]!.push(veh);
     veh.lcFrom = veh.inLane;
     veh.lcT = 0;
     veh.lastLaneChange = this.time;
@@ -782,16 +801,22 @@ export class Simulation {
     //    and keep re-checking give-way points while there is still room to stop before them.
     if (veh.seg === 1 || (veh.seg === 0 && veh.committed)) {
       const sOnConn = -toConnector;
+      let hold: number | null = null;
       for (const c of conn.conflicts) {
         const ahead = c.s - 1 - sOnConn;
         if (ahead < 0 || ahead > 40) continue;
-        if (this.zoneOccupied(c)) {
-          obstacle(ahead, 0);
-        } else if (c.yields && ahead > stoppingDistance(veh.v, STOP_DECEL)) {
+        let stop = false;
+        if (this.zoneOccupied(c)) stop = true;
+        else if (c.yields && ahead > stoppingDistance(veh.v, STOP_DECEL)) {
           const [arrive, clear] = this.conflictWindow(veh, conn, c, -sOnConn);
-          if (this.trafficConflicts(veh, c, arrive, clear, true)) obstacle(ahead, 0);
+          stop = this.trafficConflicts(veh, c, arrive, clear, true);
+        }
+        if (stop) {
+          obstacle(ahead, 0);
+          hold = Math.min(hold ?? Infinity, c.s);
         }
       }
+      veh.holdAt = hold;
       for (const x of conn.crosswalkCrossings) {
         const ahead = x.s - net.crosswalks[x.crosswalk]!.width / 2 - 1 - sOnConn;
         if (ahead < 0 || ahead > 40) continue;
@@ -857,6 +882,7 @@ export class Simulation {
   private mayEnter(veh: Vehicle, conn: Connector, d: number, canStop: boolean): boolean {
     const net = this.network;
     const signal = connectorSignal(this.clock, conn);
+    veh.holdAt = null;
     if (signal === 'red') return !canStop && veh.committed;
     if (signal === 'amber' && canStop) return false;
 
@@ -871,9 +897,11 @@ export class Simulation {
 
     const ordered = [...conn.conflicts].sort((a, b) => a.s - b.s);
     for (const c of ordered) {
-      // Never pull into the path of someone already in the junction, priority or not.
-      if (this.zoneOccupied(c)) return false;
       const [arrive, clear] = this.conflictWindow(veh, conn, c, d);
+      // Never pull into the path of someone in the junction, priority or not, if we'd get there
+      // while they are still in it. A car far up the road keeps going: they'll be gone by then,
+      // and the in-junction check stops us at the zone if they aren't.
+      if (arrive < OCCUPIED_HORIZON && this.zoneOccupied(c)) return false;
       if (!c.yields) {
         // Having priority still means respecting a driver who has already committed to the gap.
         if (this.trafficConflicts(veh, c, arrive, clear, false)) return false;
@@ -882,6 +910,7 @@ export class Simulation {
       if (!this.trafficConflicts(veh, c, arrive, clear, true)) continue;
       // Under signals, a turner may pull forward and wait inside the junction just before the crossing,
       // so it can clear when the opposing flow stops at amber. One waiting vehicle per connector.
+      veh.holdAt = c.s;
       const pullForward =
         this.clock !== null && signal === 'green' && c.kind === 'cross' && c.s >= 6 && this.connVehicles[conn.idx]!.length === 0;
       if (!pullForward) return false;
@@ -913,24 +942,28 @@ export class Simulation {
     const other = net.connectors[c.other]!;
     const otherIn = net.lanes[other.inLane]!;
     const otherSignal = connectorSignal(this.clock, other);
-    const accel = PRIORITY_ACCEL;
-    const vmax = otherIn.speedLimit;
+    // Giving way: assume priority traffic may speed up a little, to be safe. Having priority but
+    // respecting someone who committed to a gap: they accelerate briskly through it, as real drivers do.
+    const accel = yielding ? PRIORITY_ACCEL : GAP_ACCEL;
+    const vmax = yielding ? otherIn.speedLimit : other.speedLimit;
 
     const zoneLength = c.sOtherEnd - c.sOther;
     /** `distance` is from x's front to the start of the shared stretch on its path. */
     const check = (x: Vehicle, distance: number): boolean => {
       if (distance < -(zoneLength + x.length)) return false; // already cleared the conflict
-      if (distance < 0.5) return true; // inside the zone right now
-      // Assume the other driver may speed up: the earliest they could arrive.
-      const arrive = timeToTravel(distance, x.v, accel, vmax);
-      const clear = timeToTravel(distance + zoneLength + x.length, x.v, accel, vmax);
-      const margin = c.kind === 'merge' ? MERGE_HEADWAY : CROSS_MARGIN;
+      if (distance < 0.5 && (yielding || myArrive < OCCUPIED_HORIZON)) return true; // inside the zone right now
+      const arrive = timeToTravel(Math.max(0, distance), x.v, accel, vmax);
+      const clear = timeToTravel(Math.max(0, distance) + zoneLength + x.length, x.v, accel, vmax);
+      const margin = !yielding ? COMMITTED_MARGIN : c.kind === 'merge' ? MERGE_HEADWAY : CROSS_MARGIN;
       return arrive < myClear + margin && clear + 0.5 > myArrive;
     };
 
+    // Someone pulled forward to wait for a gap before this conflict is not a threat to us here.
+    const holdsBefore = (x: Vehicle) => !yielding && x.holdAt !== null && x.holdAt <= c.sOther + 0.01;
     for (const x of this.connVehicles[c.other]!) {
       // A driver waiting inside the box for a gap is waiting for us, not the other way round.
       if (!yielding && x.v < QUEUED_SPEED) continue;
+      if (holdsBefore(x)) continue;
       if (check(x, c.sOther - x.s)) return true;
     }
     for (const x of this.laneVehicles[other.inLane]!) {
@@ -940,7 +973,7 @@ export class Simulation {
         const distance = toLine + c.sOther;
         if (distance > PRIORITY_LOOKBACK) break;
         const held = otherSignal === 'red' && !x.committed;
-        const relevant = yielding ? !held && !refused : x.committed;
+        const relevant = yielding ? !held && !refused : x.committed && !holdsBefore(x);
         if (relevant && check(x, distance)) return true;
       }
       // Everyone queued behind a driver who is stopping at the line is stuck behind them too.
