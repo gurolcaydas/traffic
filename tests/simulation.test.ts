@@ -4,6 +4,7 @@ import { overlappingVehicles, pedestrianStrikes } from '../src/sim/safety';
 import { Simulation } from '../src/sim/simulation';
 import { stateFor } from '../src/sim/signals';
 import { crossroad, twoPhaseSignals } from '../src/scenarios/templates';
+import { DEFAULT_SETUP, buildScenario, defaultDemand } from '../src/scenarios/setup';
 
 /** Run a scenario, checking for collisions every half second. */
 function runChecked(scenario: Scenario, seconds: number) {
@@ -96,6 +97,11 @@ describe('Safety: no vehicle drives through another', () => {
     ['left-hand traffic', crossroad({ vehPerHourPerLeg: 300, driveSide: 'left' })],
     ['T junction', crossroad({ angles: [0, 90, 180], vehPerHourPerLeg: 400 })],
     ['irregular 5-way', crossroad({ angles: [0, 70, 150, 220, 290], vehPerHourPerLeg: 200 })],
+    ['3 lanes, zebras', crossroad({ lanes: 3, vehPerHourPerLeg: 600, crosswalks: 'zebra', pedPerHourPerCrosswalk: 150 })],
+    [
+      '5-way, left-hand, signals, 2 lanes',
+      buildScenario({ ...DEFAULT_SETUP, shape: 'five', lanes: 2, control: 'signals', driveSide: 'left', crosswalks: 'signal' }, defaultDemand({ ...DEFAULT_SETUP, shape: 'five' })),
+    ],
   ];
   for (const [name, scenario] of cases) {
     it(name, () => {

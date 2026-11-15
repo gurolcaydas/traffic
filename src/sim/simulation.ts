@@ -73,7 +73,7 @@ const GRIDLOCK_STOPPED = 180;
 
 export class Simulation {
   readonly network: Network;
-  readonly scenario: Scenario;
+  scenario: Scenario;
   readonly dt: number;
   time = 0;
   vehicles: Vehicle[] = [];
@@ -124,6 +124,13 @@ export class Simulation {
     this.updatePedestrians(dt);
     this.observeQueues();
     this.time += dt;
+  }
+
+  /** Change traffic demand on the fly. Vehicles already on the map or waiting to enter are kept. */
+  setDemand(demand: Scenario['demand']) {
+    this.scenario = { ...this.scenario, demand };
+    this.nextVehicleArrival = demand.vehicles.map((d) => this.time + this.rng.exponential(d.vehPerHour / 3600));
+    this.nextPedArrival = demand.pedestrians.map((d) => this.time + this.rng.exponential(d.pedPerHour / 3600));
   }
 
   resetMetrics() {
@@ -371,13 +378,15 @@ export class Simulation {
       }
     }
 
-    // Rear ends of vehicles that just turned onto a sibling connector still block the lane end.
-    if (veh.seg === 0) {
-      for (const c of net.connectorsFromLane.get(veh.inLane) ?? []) {
-        if (c === veh.connector) continue;
-        const list = this.connVehicles[c]!;
-        const last = list[list.length - 1];
-        if (last && last.s < last.length + 1) consider(last, inLen + last.s);
+    // Vehicles that took a different turn from the same lane share the first stretch of the
+    // junction with us until the paths split, so they are leaders until their rear has left it.
+    if (veh.seg !== 2) {
+      for (const sib of net.connectors[veh.connector]!.siblings) {
+        for (const x of this.connVehicles[sib.other]!) {
+          if (x.s - x.length >= sib.until) continue;
+          const front = veh.seg === 0 ? inLen + x.s : x.s;
+          if (front > veh.s) consider(x, front);
+        }
       }
     }
     return best;
@@ -561,7 +570,8 @@ export class Simulation {
         ped.crossing = true;
         this.metrics.recordCrossing(this.time - ped.arrivalTime);
       }
-      if (ped.crossing) ped.s += ped.dir * ped.speed * dt;
+      // A crossing pedestrian waits for a car that is still sitting in the band just ahead of them.
+      if (ped.crossing && !this.vehicleBlocksPedestrian(ped)) ped.s += ped.dir * ped.speed * dt;
       const done = ped.dir === 1 ? ped.s >= cw.path.length : ped.s <= 0;
       if (!done) remaining.push(ped);
     }
@@ -578,7 +588,8 @@ export class Simulation {
       const inLen = net.lanes[conn.inLane]!.path.length;
       for (const veh of this.connVehicles[x.connector]!) {
         const dist = x.s - veh.s;
-        if (dist > -veh.length - 1 && dist < Math.max(8, veh.v * 3)) return false;
+        // Clear only once the rear has left the whole crosswalk band.
+        if (dist > -(veh.length + cw.width / 2 + 1) && dist < Math.max(8, veh.v * 3)) return false;
       }
       for (const veh of this.laneVehicles[conn.inLane]!) {
         if (veh.connector !== x.connector || !veh.committed) continue;
@@ -587,6 +598,19 @@ export class Simulation {
       }
     }
     return true;
+  }
+
+  private vehicleBlocksPedestrian(ped: Pedestrian): boolean {
+    const cw = this.network.crosswalks[ped.crosswalk]!;
+    for (const x of cw.crossings) {
+      const ahead = (x.sCrosswalk - ped.s) * ped.dir;
+      if (ahead < -1.5 || ahead > 2.5) continue;
+      for (const veh of this.connVehicles[x.connector]!) {
+        // Any part of the body within the band around this crossing point.
+        if (veh.s > x.s - cw.width / 2 - 0.5 && veh.s - veh.length < x.s + cw.width / 2 + 0.5) return true;
+      }
+    }
+    return false;
   }
 
   // --- metrics ------------------------------------------------------------

@@ -94,3 +94,62 @@ describe('buildNetwork: lanes and control', () => {
     expect(buildNetwork(crossroad({ angles: [0, 70, 150, 220, 290] })).connectors).toHaveLength(20);
   });
 });
+
+describe('buildNetwork: curb clearance', () => {
+  const distToPolyline = (p: { x: number; y: number }, pts: Array<{ x: number; y: number }>) => {
+    let best = Infinity;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i]!;
+      const b = pts[i + 1]!;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const l2 = dx * dx + dy * dy;
+      const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+      best = Math.min(best, Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy));
+    }
+    return best;
+  };
+
+  const insidePolygon = (p: { x: number; y: number }, poly: Array<{ x: number; y: number }>) => {
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i]!;
+      const b = poly[j]!;
+      if (a.y > p.y !== b.y > p.y && p.x < ((b.x - a.x) * (p.y - a.y)) / (b.y - a.y) + a.x) inside = !inside;
+    }
+    return inside;
+  };
+
+  /** On a leg's strip of road, or in one of the corner areas between legs. */
+  const onAsphalt = (net: ReturnType<typeof buildNetwork>, p: { x: number; y: number }) => {
+    for (const g of net.legs.values()) {
+      const s = p.x * g.dir.x + p.y * g.dir.y;
+      const o = p.x * g.inNormal.x + p.y * g.inNormal.y;
+      if (s >= 0 && s <= g.length && o >= -g.outEdge && o <= g.inEdge) return true;
+    }
+    return net.corners.some((c) => insidePolygon(p, [{ x: 0, y: 0 }, ...c]));
+  };
+
+  // Half a car's width plus a little air.
+  const MIN_CLEARANCE = 1.0;
+  const layouts = [
+    crossroad(),
+    crossroad({ lanes: 2 }),
+    crossroad({ lanes: 3, crosswalks: 'zebra' }),
+    crossroad({ driveSide: 'left', lanes: 2 }),
+    crossroad({ angles: [0, 180, 270] }),
+    crossroad({ angles: [90, 210, 330], lanes: 2 }),
+    crossroad({ angles: [0, 70, 145, 215, 290] }),
+  ];
+  layouts.forEach((scenario, i) => {
+    it(`keeps every turn path clear of the curbs (layout ${i + 1})`, () => {
+      const net = buildNetwork(scenario);
+      let worst = Infinity;
+      for (const c of net.connectors) {
+        for (const p of c.path.points) for (const corner of net.corners) worst = Math.min(worst, distToPolyline(p, corner));
+      }
+      expect(worst).toBeGreaterThan(MIN_CLEARANCE);
+      for (const c of net.connectors) for (const p of c.path.points) expect(onAsphalt(net, p)).toBe(true);
+    });
+  });
+});

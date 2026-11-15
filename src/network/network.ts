@@ -66,6 +66,11 @@ export interface Connector {
   speedLimit: number;
   turn: TurnKind;
   conflicts: ConflictRef[];
+  /**
+   * Other connectors leaving the same lane. Both start on a shared stretch before they split;
+   * `until` is where the other connector has left it (arc length along the other connector).
+   */
+  siblings: Array<{ other: number; until: number }>;
   /** Indices into Network.crosswalks paired with where this connector crosses them. */
   crosswalkCrossings: Array<{ crosswalk: number; s: number; sCrosswalk: number }>;
   /** Signal phases in which this connector has green. Empty for non-signalised control. */
@@ -93,6 +98,8 @@ export interface Network {
   connectorsFromLane: Map<number, number[]>;
   /** Inbound lanes allowed for each movement, keyed `${from}>${to}`. */
   movementLanes: Map<string, number[]>;
+  /** Curb returns between neighbouring legs, as polylines from one leg's edge round to the next. */
+  corners: Vec2[][];
 }
 
 export const movementKey = (from: LegId, to: LegId) => `${from}>${to}`;

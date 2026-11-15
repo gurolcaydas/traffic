@@ -27,7 +27,9 @@ import {
 const PROXIMITY = 2.6;
 const THROUGH_ANGLE = 30;
 /** Comfortable lateral acceleration in turns, m/s². */
-const LATERAL_ACCEL = 2.5;
+const LATERAL_ACCEL = 3.0;
+/** How far the rounded curb return reaches along each road edge from the corner, m. */
+const CURB_RETURN = 5;
 
 export function buildNetwork(scenario: Scenario): Network {
   const side = scenario.driveSide === 'right' ? 1 : -1;
@@ -83,7 +85,12 @@ export function buildNetwork(scenario: Scenario): Network {
         const inLane = laneOf.get(`${from.id}/in/${l}`)!;
         const outLane = laneOf.get(`${to.id}/out/${outIndex}`)!;
         allowed.push(inLane);
-        const path = connectorPath(lanes[inLane]!.path, lanes[outLane]!.path);
+        // A near-side turn follows the curb return, keeping its lane's distance from the curb.
+        const curbGap = Math.min(
+          gFrom.inEdge - laneOffset(gFrom, from.lanesIn, l),
+          legs.get(to.id)!.outEdge - laneOffset(legs.get(to.id)!, to.lanesOut, outIndex),
+        );
+        const path = connectorPath(lanes[inLane]!.path, lanes[outLane]!.path, turn === 'near' ? CURB_RETURN + curbGap : Infinity);
         const curveSpeed = Math.sqrt(LATERAL_ACCEL * path.minRadius());
         const idx = connectors.length;
         connectors.push({
@@ -96,6 +103,7 @@ export function buildNetwork(scenario: Scenario): Network {
           speedLimit: Math.min(lanes[inLane]!.speedLimit, curveSpeed),
           turn,
           conflicts: [],
+          siblings: [],
           crosswalkCrossings: [],
           greenPhases: [],
         });
@@ -112,7 +120,9 @@ export function buildNetwork(scenario: Scenario): Network {
 
   const crosswalks = buildCrosswalks(scenario, legs, connectors);
 
-  return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes };
+  const corners = buildCorners(legs, side);
+
+  return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes, corners };
 }
 
 function buildLegGeometry(scenario: Scenario, side: number): Map<string, LegGeometry> {
@@ -133,7 +143,7 @@ function buildLegGeometry(scenario: Scenario, side: number): Map<string, LegGeom
       const h = Math.max(halfWidth(spec), halfWidth(nb));
       corner = Math.max(corner, gap >= 179 ? h : h / Math.tan(((gap / 2) * Math.PI) / 180));
     }
-    const boxEdge = corner + 1.5;
+    const boxEdge = corner + CURB_RETURN;
     const cw = hasCrosswalk.has(spec.id);
     const crosswalkCenter = cw ? boxEdge + DEFAULTS.crosswalkWidth / 2 : null;
     const stopLine = cw ? boxEdge + DEFAULTS.crosswalkWidth + 1 : boxEdge;
@@ -173,15 +183,52 @@ function classifyTurn(angle: number, side: number): TurnKind {
   return angle * side < 0 ? 'near' : 'far';
 }
 
-function connectorPath(inPath: Polyline, outPath: Polyline): Polyline {
+/** Distance of lane `index` (0 = curb) from the leg centreline. */
+const laneOffset = (g: LegGeometry, lanes: number, index: number) => g.medianWidth / 2 + (lanes - 1 - index + 0.5) * g.laneWidth;
+
+/**
+ * Path through the junction: straight on, a circular arc of at most `maxRadius`, straight out.
+ * Nearly straight movements, or lanes whose lines don't meet ahead, get a smooth S-curve instead.
+ */
+function connectorPath(inPath: Polyline, outPath: Polyline, maxRadius: number): Polyline {
   const p0 = inPath.pointAt(inPath.length);
   const d0 = inPath.directionAt(inPath.length);
   const p3 = outPath.pointAt(0);
   const d3 = outPath.directionAt(0);
-  const d = dist(p0, p3);
-  const k = d * 0.4;
-  const samples = Math.max(8, Math.ceil(d));
-  return new Polyline(cubicBezier(p0, add(p0, scale(d0, k)), add(p3, scale(d3, -k)), p3, samples));
+  const theta = Math.acos(Math.max(-1, Math.min(1, dot(d0, d3))));
+  const meet = rayMeet(p0, d0, p3, d3);
+
+  if (theta < (THROUGH_ANGLE * Math.PI) / 180 || !meet) {
+    const d = dist(p0, p3);
+    const k = d * 0.4;
+    return new Polyline(cubicBezier(p0, add(p0, scale(d0, k)), add(p3, scale(d3, -k)), p3, Math.max(8, Math.ceil(d))));
+  }
+
+  // Largest arc that fits between the two lane ends, capped by maxRadius.
+  const tanHalf = Math.tan(theta / 2);
+  const room = Math.min(meet.a, meet.b);
+  const r = Math.min(maxRadius, room / tanHalf);
+  const t = r * tanHalf;
+  const t1 = add(p0, scale(d0, meet.a - t));
+  const t2 = add(p3, scale(d3, -(meet.b - t)));
+  const h = (4 / 3) * Math.tan(theta / 4) * r;
+  const arc = cubicBezier(t1, add(t1, scale(d0, h)), add(t2, scale(d3, -h)), t2, Math.max(8, Math.ceil(r * theta)));
+  const pts: Vec2[] = [];
+  if (meet.a - t > 0.05) pts.push(p0);
+  pts.push(...arc);
+  if (meet.b - t > 0.05) pts.push(p3);
+  return new Polyline(pts);
+}
+
+/** Where the ray from p along d meets the ray arriving at q along e: distances a (ahead of p) and b (before q). */
+function rayMeet(p: Vec2, d: Vec2, q: Vec2, e: Vec2): { a: number; b: number } | null {
+  const denom = cross(d, e);
+  if (Math.abs(denom) < 1e-9) return null;
+  const w = { x: q.x - p.x, y: q.y - p.y };
+  const a = cross(w, e) / denom;
+  const b = cross(d, w) / denom;
+  if (a <= 0 || b <= 0) return null;
+  return { a, b };
 }
 
 function assignSignalPhases(scenario: Scenario, connectors: Connector[]) {
@@ -218,7 +265,12 @@ function findConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, conne
     for (let j = i + 1; j < connectors.length; j++) {
       const a = connectors[i]!;
       const b = connectors[j]!;
-      if (a.inLane === b.inLane) continue; // diverging from one lane is plain car-following
+      if (a.inLane === b.inLane) {
+        // Diverging from one lane: car-following until the paths have split apart.
+        a.siblings.push({ other: j, until: closeStretch(b.path, a.path)?.[1] ?? 0 });
+        b.siblings.push({ other: i, until: closeStretch(a.path, b.path)?.[1] ?? 0 });
+        continue;
+      }
 
       const merge = a.outLane === b.outLane;
       const ra = closeStretch(a.path, b.path);
@@ -289,6 +341,36 @@ function buildCrosswalks(scenario: Scenario, legs: Map<string, LegGeometry>, con
     }
     return cw;
   });
+}
+
+/** Rounded curb returns between each pair of neighbouring legs. */
+function buildCorners(legs: Map<string, LegGeometry>, side: number): Vec2[][] {
+  const sorted = [...legs.values()].sort((a, b) => Math.atan2(a.dir.y, a.dir.x) - Math.atan2(b.dir.y, b.dir.x));
+  if (sorted.length < 2) return [];
+  return sorted.map((a, i) => {
+    const b = sorted[(i + 1) % sorted.length]!;
+    // A's counter-clockwise edge meets B's clockwise edge.
+    const pa = add(scale(a.dir, a.boxEdge), scale(perpLeft(a.dir), side === 1 ? a.inEdge : a.outEdge));
+    const pb = add(scale(b.dir, b.boxEdge), scale(perpLeft(b.dir), -(side === 1 ? b.outEdge : b.inEdge)));
+    let gap = Math.atan2(b.dir.y, b.dir.x) - Math.atan2(a.dir.y, a.dir.x);
+    if (gap <= 0) gap += Math.PI * 2;
+    if (gap >= (175 * Math.PI) / 180) return [pa, pb]; // nearly straight or reflex: plain edge
+    const c = lineIntersection(pa, a.dir, pb, b.dir) ?? scale(add(pa, pb), 0.5);
+    const pts: Vec2[] = [];
+    for (let k = 0; k <= 16; k++) {
+      const t = k / 16;
+      const u = 1 - t;
+      pts.push({ x: u * u * pa.x + 2 * u * t * c.x + t * t * pb.x, y: u * u * pa.y + 2 * u * t * c.y + t * t * pb.y });
+    }
+    return pts;
+  });
+}
+
+function lineIntersection(p: Vec2, d: Vec2, q: Vec2, e: Vec2): Vec2 | null {
+  const denom = d.x * e.y - d.y * e.x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const t = ((q.x - p.x) * e.y - (q.y - p.y) * e.x) / denom;
+  return add(p, scale(d, t));
 }
 
 const clamp = (x: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, x));

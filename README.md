@@ -3,11 +3,13 @@
 A game-like traffic puzzle: you get a junction with a traffic jam and fix it by adding signals,
 lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
 
-**Status: Phase 0.** There's a headless simulation engine and no UI yet.
+**Status: Phase 1.** There's a sandbox: an animated top-view junction, a live demand table and live metrics. Changing the junction layout restarts the traffic; live structural editing comes in Phase 2.
 
 ## Commands
 
 ```bash
+npm run dev       # the sandbox app at http://localhost:5173
+npm run build
 npm test          # unit + simulation tests
 npm run typecheck
 npm run sim       # play the sample scenarios headless and print metrics (npm run sim -- 30 for 30 minutes)
@@ -23,7 +25,9 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/sim/simulation.ts` | The engine: vehicles (IDM car-following), gap acceptance, signals, pedestrians. Fixed 0.1 s step. |
 | `src/sim/metrics.ts` | Queues, delay, throughput, Level of Service A–F, gridlock flag (what the game scores on). |
 | `src/sim/safety.ts` | Collision checks used by the tests. |
-| `src/scenarios/templates.ts` | Parametric junctions (any number of legs and angles, lanes, crosswalks). |
+| `src/scenarios/templates.ts`, `setup.ts` | Parametric junctions, and the sandbox's choices (shape, lanes, control, crossings, drive side) turned into a Scenario, including an automatic signal plan. |
+| `src/app/` | React UI: the sidebar panels, the store (Zustand), and `sim.worker.ts`, which runs the simulation off the main thread and streams frames back. |
+| `src/render/` | PixiJS renderer: asphalt, curbs and markings drawn once, then signals, vehicles and pedestrians every frame, interpolated between simulation frames. |
 
 ## How the simulation works
 
@@ -36,4 +40,6 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
   - Committed vehicles act as reservations: drivers with priority still respect them, and drivers who must give way ignore anyone already told to wait.
   - Under signals, turners may pull forward and wait inside the box for a gap.
 - **Pedestrians.** On a zebra, pedestrians have priority. On a signalised crossing, they walk only during their phase. Either way, they never step in front of a vehicle that can no longer stop.
+- **Turn paths.** Each turn is a straight run, a circular arc, then another straight run. Right turns (left turns in left-hand traffic) follow the curb return, so they keep their lane's distance from the curb. A test checks that every path stays on the asphalt.
+- **Calibration.** A single lane discharges about 1900 veh/h. Signal delays track Webster's formula, and a typical permissive junction gives LOS C at 200 veh/h per leg.
 - **Determinism.** The same scenario and seed always play out identically.

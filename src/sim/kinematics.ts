@@ -10,7 +10,7 @@ export interface IdmParams {
   s0: number;
 }
 
-export const DEFAULT_IDM: IdmParams = { a: 1.5, b: 2.0, T: 1.2, s0: 2.0 };
+export const DEFAULT_IDM: IdmParams = { a: 2.0, b: 2.0, T: 1.0, s0: 2.0 };
 export const MAX_DECEL = 8;
 
 /**
