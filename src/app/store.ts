@@ -4,6 +4,29 @@ import type { MetricsSnapshot } from '../sim/metrics';
 import type { SignalClock } from '../sim/signals';
 import { DEFAULT_SETUP, buildScenario, defaultDemand, type Setup } from '../scenarios/setup';
 import { PATTERNS } from '../scenarios/patterns';
+import { levelById } from '../game/levels';
+import type { LevelResult } from '../game/types';
+
+export type Mode = { kind: 'sandbox' } | { kind: 'level'; levelId: string };
+
+const PROGRESS_KEY = 'traffic.progress.v1';
+
+/** Best stars per level. Kept in this browser only; private windows may not keep it. */
+function loadProgress(): Record<string, number> {
+  try {
+    return JSON.parse(localStorage.getItem(PROGRESS_KEY) ?? '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
+}
+
+function saveProgress(progress: Record<string, number>) {
+  try {
+    localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+  } catch {
+    // Storage unavailable (private mode, blocked): progress just won't survive a reload.
+  }
+}
 
 export type ThemeChoice = 'system' | 'light' | 'dark';
 
@@ -17,6 +40,12 @@ export interface Baseline {
 const MIN_BASELINE_WINDOW = 60;
 
 interface AppState {
+  mode: Mode;
+  /** Result of the latest level submission. */
+  levelResult: LevelResult | null;
+  /** Best stars per level id. */
+  progress: Record<string, number>;
+  showLevels: boolean;
   /** The junction being played. Everything else is derived from it. */
   scenario: Scenario;
   /** Designs the fair test can compare against: as first built, just before the latest edit, or pinned. */
@@ -42,6 +71,10 @@ interface AppState {
   theme: ThemeChoice;
 
   newJunction: (patch: Partial<Setup>) => void;
+  startLevel: (id: string) => void;
+  playSandbox: () => void;
+  setShowLevels: (show: boolean) => void;
+  recordResult: (result: LevelResult) => void;
   /** Change the layout while traffic keeps running. `label` describes the change for the comparison card. */
   edit: (label: string, change: (draft: Scenario) => void) => void;
   setVehicleDemand: (from: string, to: string, vehPerHour: number) => void;
@@ -64,6 +97,10 @@ let setup: Setup = DEFAULT_SETUP;
 const initial = buildScenario(DEFAULT_SETUP, defaultDemand(DEFAULT_SETUP));
 
 export const useApp = create<AppState>((set, get) => ({
+  mode: { kind: 'sandbox' },
+  levelResult: null,
+  progress: loadProgress(),
+  showLevels: false,
   scenario: initial,
   originalDesign: initial,
   designBeforeLastEdit: null,
@@ -82,6 +119,39 @@ export const useApp = create<AppState>((set, get) => ({
   clockJump: null,
   theme: 'system',
 
+  startLevel: (id) => {
+    const level = levelById(id);
+    if (!level) return;
+    const scenario = structuredClone(level.scenario);
+    set({
+      mode: { kind: 'level', levelId: id },
+      levelResult: null,
+      showLevels: false,
+      scenario,
+      originalDesign: scenario,
+      designBeforeLastEdit: null,
+      pinnedDesign: null,
+      layoutVersion: get().layoutVersion + 1,
+      selectedLeg: null,
+      baseline: null,
+      lastEdit: null,
+      metrics: null,
+      timeOfDay: scenario.demand.pattern?.startHour ?? null,
+    });
+  },
+  playSandbox: () => {
+    set({ mode: { kind: 'sandbox' }, levelResult: null, showLevels: false });
+    get().newJunction({});
+  },
+  setShowLevels: (showLevels) => set({ showLevels }),
+  recordResult: (result) => {
+    const mode = get().mode;
+    if (mode.kind !== 'level') return;
+    const progress = { ...get().progress };
+    if (result.stars > (progress[mode.levelId] ?? 0)) progress[mode.levelId] = result.stars;
+    saveProgress(progress);
+    set({ levelResult: result, progress });
+  },
   newJunction: (patch) => {
     const shapeChanged = patch.shape !== undefined && patch.shape !== setup.shape;
     setup = { ...setup, ...patch };
@@ -106,6 +176,7 @@ export const useApp = create<AppState>((set, get) => ({
     // Keep the older baseline if the last change hasn't run long enough to judge.
     const baseline = m && m.window >= MIN_BASELINE_WINDOW ? { label: get().lastEdit ?? 'Before', metrics: m } : get().baseline;
     set({
+      levelResult: null,
       scenario: draft,
       designBeforeLastEdit: get().scenario,
       editVersion: get().editVersion + 1,
@@ -152,7 +223,15 @@ export const useApp = create<AppState>((set, get) => ({
   setSpeed: (speed) => set({ speed }),
   // Restart clears the traffic but keeps the design, so it also becomes the new "original".
   restart: () =>
-    set({ layoutVersion: get().layoutVersion + 1, metrics: null, baseline: null, lastEdit: null, originalDesign: get().scenario, designBeforeLastEdit: null }),
+    set({
+      layoutVersion: get().layoutVersion + 1,
+      metrics: null,
+      baseline: null,
+      lastEdit: null,
+      // In a level, "original" stays the level's starting layout.
+      originalDesign: get().mode.kind === 'level' ? get().originalDesign : get().scenario,
+      designBeforeLastEdit: null,
+    }),
   setTheme: (theme) => set({ theme }),
 }));
 

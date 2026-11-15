@@ -18,7 +18,8 @@ export function TopBar({ onFit }: { onFit: () => void }) {
   const clock = useApp((s) => s.clock);
   const timeOfDay = useApp((s) => s.timeOfDay);
   const theme = useApp((s) => s.theme);
-  const { setPlaying, setSpeed, restart, setTheme } = useApp.getState();
+  const mode = useApp((s) => s.mode);
+  const { setPlaying, setSpeed, restart, setTheme, setShowLevels } = useApp.getState();
 
   return (
     <header className="topbar">
@@ -28,7 +29,10 @@ export function TopBar({ onFit }: { onFit: () => void }) {
           <circle cx="12" cy="12" r="4.5" fill="var(--accent)" stroke="currentColor" strokeWidth="2" />
         </svg>
         <span>Traffic</span>
-        <span className="tag">Sandbox</span>
+        <span className="tag">{mode.kind === 'level' ? 'Level' : 'Sandbox'}</span>
+        <button className="btn" onClick={() => setShowLevels(true)}>
+          ★ Levels
+        </button>
       </div>
 
       <div className="controls">
@@ -36,11 +40,11 @@ export function TopBar({ onFit }: { onFit: () => void }) {
           {playing ? '❚❚ Pause' : '▶ Play'}
         </button>
         <Segmented label="Speed" value={speed} options={SPEEDS.map((s) => ({ value: s, label: `${s}×` }))} onChange={setSpeed} />
-        <button className="btn" onClick={restart} title="Clear the junction and start again">
-          ↺ Restart
+        <button className="btn" onClick={restart} title="Clear the junction and start again" aria-label="Restart">
+          ↺<span className="btn-label"> Restart</span>
         </button>
-        <button className="btn" onClick={onFit} title="Fit the junction in view (or double-click the map)">
-          ⤢ Fit
+        <button className="btn" onClick={onFit} title="Fit the junction in view (or double-click the map)" aria-label="Fit">
+          ⤢<span className="btn-label"> Fit</span>
         </button>
         <span className="clock num" title={timeOfDay !== null ? 'Time of day' : 'Simulated time'}>
           {timeOfDay !== null ? formatClock(timeOfDay) : clockText(simTime)}
@@ -56,9 +60,9 @@ export function TopBar({ onFit }: { onFit: () => void }) {
         label="Theme"
         value={theme}
         options={[
-          { value: 'system', label: 'Auto' },
-          { value: 'light', label: 'Light' },
-          { value: 'dark', label: 'Dark' },
+          { value: 'system', label: '◐', title: 'Theme: follow the system' },
+          { value: 'light', label: '☀', title: 'Theme: light' },
+          { value: 'dark', label: '☾', title: 'Theme: dark' },
         ]}
         onChange={setTheme}
       />

@@ -13,6 +13,8 @@ export interface CanvasTheme {
   green: number;
   amber: number;
   red: number;
+  building: number;
+  roof: number;
 }
 
 export const LIGHT: CanvasTheme = {
@@ -28,6 +30,8 @@ export const LIGHT: CanvasTheme = {
   green: 0x22a45d,
   amber: 0xf0a020,
   red: 0xe5484d,
+  building: 0xdcd7cc,
+  roof: 0xb9b3a6,
 };
 
 export const DARK: CanvasTheme = {
@@ -43,6 +47,8 @@ export const DARK: CanvasTheme = {
   green: 0x3ccf7e,
   amber: 0xf5b13d,
   red: 0xff6369,
+  building: 0x262a30,
+  roof: 0x3a3f47,
 };
 
 /** One colour per leg. Vehicles take the colour of the leg they are heading to. */

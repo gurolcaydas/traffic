@@ -3,6 +3,7 @@ import { buildNetwork } from '../network/build';
 import { Renderer } from '../render/Renderer';
 import { DARK, LIGHT } from '../render/theme';
 import type { FromWorker, ToWorker } from './protocol';
+import { useLevel } from './levelRules';
 import { useApp } from './store';
 
 /** Resolves the theme choice against the OS setting and keeps <html data-theme> in sync. */
@@ -38,6 +39,7 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
   const playing = useApp((s) => s.playing);
   const speed = useApp((s) => s.speed);
   const selectedLeg = useApp((s) => s.selectedLeg);
+  const level = useLevel();
 
   // The network only depends on the layout, not on demand.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -105,6 +107,10 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
   useEffect(() => {
     renderer?.setSelectedLeg(selectedLeg);
   }, [renderer, selectedLeg]);
+
+  useEffect(() => {
+    renderer?.setDecor(level ? { blockedCorners: level.blockedCorners ?? [], fixedLanes: level.fixedLanes ?? [] } : null);
+  }, [renderer, level]);
   const clockJump = useApp((s) => s.clockJump);
   useEffect(() => {
     if (clockJump) send({ type: 'timeOfDay', hour: clockJump.hour });

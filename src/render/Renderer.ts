@@ -1,7 +1,7 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import type { Network } from '../network/network';
 import { PED_STRIDE, VEH_STRIDE, type Frame } from '../app/protocol';
-import { drawBridges, drawNetwork, drawSelection, drawSignals, legAt } from './drawNetwork';
+import { drawBridges, drawDecor, drawNetwork, drawSelection, drawSignals, legAt, type Decor } from './drawNetwork';
 import { legColorNum, type CanvasTheme } from './theme';
 
 const CAR_WIDTH = 1.9;
@@ -24,6 +24,8 @@ export interface Camera {
 export class Renderer {
   private app = new Application();
   private world = new Container();
+  private decorLayer = new Graphics();
+  private decor: Decor | null = null;
   private roads = new Graphics();
   private selection = new Graphics();
   private signals = new Graphics();
@@ -67,7 +69,7 @@ export class Renderer {
     }
     this.host.appendChild(this.app.canvas);
     // Ground first, then the bridge deck and whatever is driving on it.
-    this.world.addChild(this.roads, this.selection, this.signals, this.peds, this.vehicles, this.bridges, this.bridgeVehicles);
+    this.world.addChild(this.decorLayer, this.roads, this.selection, this.signals, this.peds, this.vehicles, this.bridges, this.bridgeVehicles);
     this.app.stage.addChild(this.world);
     this.app.ticker.add(() => this.drawDynamic());
     this.app.renderer.on('resize', () => {
@@ -106,8 +108,15 @@ export class Renderer {
     if (this.network) drawSelection(this.selection, this.network, leg, SELECT_COLOR);
   }
 
+  async setDecor(decor: Decor | null) {
+    await this.ready;
+    this.decor = decor;
+    if (this.network) drawDecor(this.decorLayer, this.network, decor, this.theme);
+  }
+
   private drawStatic() {
     if (!this.network) return;
+    drawDecor(this.decorLayer, this.network, this.decor, this.theme);
     drawNetwork(this.roads, this.network, this.theme);
     drawBridges(this.bridges, this.network, this.theme);
     drawSelection(this.selection, this.network, this.selectedLeg, SELECT_COLOR);

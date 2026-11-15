@@ -13,8 +13,14 @@ export interface FairTestRun {
  * `onProgress` gets the fraction of runs finished.
  */
 export function runFairTest(reference: Scenario, candidate: Scenario, plan: TestPlan, onProgress: (fraction: number) => void): FairTestRun {
+  const run = runDesigns([reference, candidate], plan, onProgress);
+  return { done: run.done.then(([reference, candidate]) => ({ reference: reference!, candidate: candidate! })), cancel: run.cancel };
+}
+
+/** Run each design on every seed in the plan; resolves with one list of runs per design, in seed order. */
+export function runDesigns(designs: Scenario[], plan: TestPlan, onProgress: (fraction: number) => void): { done: Promise<RunResult[][]>; cancel: () => void } {
   const jobs: EvalJob[] = [];
-  for (const scenario of [reference, candidate]) {
+  for (const scenario of designs) {
     for (const seed of plan.seeds) jobs.push({ job: jobs.length, scenario, seed, warmup: plan.warmup, duration: plan.duration, startHour: plan.startHour });
   }
   const size = Math.max(1, Math.min(jobs.length, (navigator.hardwareConcurrency || 4) - 1, 6));
@@ -24,7 +30,7 @@ export function runFairTest(reference: Scenario, candidate: Scenario, plan: Test
   let finished = 0;
   let cancelled = false;
 
-  const done = new Promise<{ reference: RunResult[]; candidate: RunResult[] }>((resolve, reject) => {
+  const done = new Promise<RunResult[][]>((resolve, reject) => {
     const feed = (w: Worker) => {
       if (next < jobs.length) w.postMessage(jobs[next++]);
     };
@@ -36,7 +42,7 @@ export function runFairTest(reference: Scenario, candidate: Scenario, plan: Test
         if (finished === jobs.length) {
           workers.forEach((x) => x.terminate());
           const n = plan.seeds.length;
-          resolve({ reference: results.slice(0, n), candidate: results.slice(n) });
+          resolve(designs.map((_, i) => results.slice(i * n, (i + 1) * n)));
         } else feed(w);
       };
       w.onerror = (err) => {

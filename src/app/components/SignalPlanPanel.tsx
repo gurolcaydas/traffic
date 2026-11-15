@@ -9,6 +9,7 @@ import {
   togglePedInPhase,
   type PlanPreset,
 } from '../../scenarios/edit';
+import { useRules } from '../levelRules';
 import { useApp } from '../store';
 
 const PRESETS: Array<{ value: PlanPreset; label: string; title: string }> = [
@@ -22,7 +23,8 @@ export function SignalPlanPanel() {
   const scenario = useApp((s) => s.scenario);
   const clock = useApp((s) => s.clock);
   const edit = useApp((s) => s.edit);
-  if (scenario.control.type !== 'signals') return null;
+  const rules = useRules();
+  if (scenario.control.type !== 'signals' || !rules.signalPlan) return null;
   const { phases } = scenario.control;
   const legIndex = (id: string) => scenario.legs.findIndex((l) => l.id === id);
   const signalCrossings = scenario.crosswalks.filter((c) => c.type === 'signal');

@@ -1000,3 +1000,268 @@ body {
 .inline-field > label {
   margin: 0;
 }
+
+/* Game: levels */
+
+:root {
+  --star: #e8a317;
+}
+
+.stars {
+  display: inline-flex;
+  gap: 1px;
+  color: var(--border);
+  font-size: 13px;
+  line-height: 1;
+}
+
+.stars.lg {
+  font-size: 26px;
+  gap: 3px;
+}
+
+.stars .on {
+  color: var(--star);
+}
+
+.level-panel {
+  background: color-mix(in srgb, var(--star) 7%, var(--surface));
+}
+
+.brief {
+  margin: 0 0 12px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.goal {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  background: var(--surface);
+}
+
+.goal-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.goal-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text);
+}
+
+.rules {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.rules li + li {
+  margin-top: 2px;
+}
+
+.budget {
+  margin-top: 12px;
+}
+
+.budget-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-2);
+  margin-bottom: 4px;
+}
+
+.budget-head .num {
+  color: var(--text);
+}
+
+.budget-head .over {
+  color: var(--bad);
+  font-weight: 600;
+}
+
+.budget .bar-fill {
+  background: var(--star);
+  opacity: 0.9;
+}
+
+.budget .bar-fill.bad {
+  background: var(--bad);
+}
+
+.cost-items {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.cost-items li {
+  display: flex;
+  justify-content: space-between;
+}
+
+.level-result {
+  margin-top: 12px;
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.level-result.pass {
+  border-color: color-mix(in srgb, var(--star) 60%, transparent);
+}
+
+.level-result.fail {
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+}
+
+.result-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+}
+
+.result-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin: 10px 0 0;
+}
+
+.result-stats dt {
+  font-size: 11px;
+  color: var(--text-2);
+}
+
+.result-stats dd {
+  margin: 0;
+  font-size: 13px;
+}
+
+.failures {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 12px;
+  color: var(--bad);
+}
+
+.hint-text {
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 35%);
+  padding: 16px;
+}
+
+.level-select {
+  width: min(860px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.level-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.level-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas: 'num title' 'brief brief' 'stars stars';
+  gap: 6px 10px;
+  text-align: left;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  border-radius: var(--radius);
+  padding: 12px;
+  cursor: pointer;
+}
+
+.level-card:hover:not(:disabled) {
+  border-color: var(--star);
+}
+
+.level-card.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.level-num {
+  grid-area: num;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--text);
+  color: var(--surface);
+  font-size: 13px;
+}
+
+.level-title {
+  grid-area: title;
+  align-self: center;
+  font-weight: 600;
+}
+
+.level-brief {
+  grid-area: brief;
+  font-size: 12px;
+  color: var(--text-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.level-card .stars {
+  grid-area: stars;
+  font-size: 16px;
+}
+
+.segmented button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.chip:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+input[readonly] {
+  color: var(--text-2);
+}
+
+@media (max-width: 1100px) {
+  .btn-label {
+    display: none;
+  }
+}

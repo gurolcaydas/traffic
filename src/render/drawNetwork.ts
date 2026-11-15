@@ -151,6 +151,41 @@ function drawRoundaboutIslands(g: Graphics, net: Network, t: CanvasTheme) {
   }
 }
 
+/** Things that explain a level's limits: a building on a blocked corner, shops along legs that can't widen. */
+export interface Decor {
+  blockedCorners: string[];
+  fixedLanes: string[];
+}
+
+export function drawDecor(g: Graphics, net: Network, decor: Decor | null, t: CanvasTheme) {
+  g.clear();
+  if (!decor) return;
+  const block = (leg: LegGeometry, s0: number, s1: number, o0: number, o1: number) => {
+    g.poly(flat(strip(leg, s0, s1, o0, o1))).fill(t.building).stroke({ width: 0.3, color: t.curb, alpha: 0.6 });
+    // A ridge line along the long side reads as a roof from above.
+    const mid = (o0 + o1) / 2;
+    line(g, along(leg, s0 + 1, mid), along(leg, s1 - 1, mid));
+    g.stroke({ width: 0.4, color: t.roof });
+  };
+  for (const id of decor.blockedCorners) {
+    const leg = net.legs.get(id);
+    if (!leg) continue;
+    // On the side a side road would use: beyond the inbound lanes' curb, just up from the junction.
+    const o = leg.inEdge + 3;
+    block(leg, leg.stopLine + 2, leg.stopLine + 22, o, o + 14);
+  }
+  for (const id of decor.fixedLanes) {
+    const leg = net.legs.get(id);
+    if (!leg) continue;
+    // Leave room for a corner building on the inbound side, if there is one.
+    const inStart = decor.blockedCorners.includes(id) ? leg.stopLine + 25 : leg.stopLine + 6;
+    for (let s = leg.stopLine + 6; s + 12 < leg.length - 4; s += 15) {
+      if (s >= inStart) block(leg, s, s + 12, leg.inEdge + 2.5, leg.inEdge + 10);
+      block(leg, s, s + 12, -(leg.outEdge + 2.5), -(leg.outEdge + 10));
+    }
+  }
+}
+
 /** Bridge decks for flyovers, drawn above ground-level traffic. */
 export function drawBridges(g: Graphics, net: Network, t: CanvasTheme) {
   g.clear();

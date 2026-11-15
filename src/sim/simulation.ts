@@ -74,6 +74,11 @@ const PRIORITY_LOOKBACK = 150;
 /** Extra seconds of clearance required behind a priority vehicle. */
 const CROSS_MARGIN = 0.8;
 const MERGE_HEADWAY = 1.2;
+/**
+ * Speed a driver slows to at the line when their movement must give way and no light tells them it's
+ * clear: they have to look before going, whether or not anyone is coming.
+ */
+const CAUTION_SPEED = 4.5;
 /** Margin a driver with priority keeps from someone who has already committed to cross. */
 const COMMITTED_MARGIN = 0.3;
 /** A car in a conflict zone only holds back drivers who would reach that zone within this many seconds. */
@@ -792,8 +797,11 @@ export class Simulation {
       } else {
         veh.committed = false;
       }
-      // 3. Slow down to the connector's curve speed before reaching it.
-      const vc = conn.speedLimit * veh.speedFactor;
+      // 3. Slow down to the connector's curve speed before reaching it, and to a looking speed if
+      //    this movement must give way without a signal to rely on.
+      const noLightToTrust = this.clock === null || !conn.controlled || connectorSignal(this.clock, conn) !== 'green';
+      const mustLook = noLightToTrust && conn.conflicts.some((c) => c.yields);
+      const vc = Math.min(conn.speedLimit, mustLook && conn.kind === 'normal' ? CAUTION_SPEED : Infinity) * veh.speedFactor;
       if (veh.v > vc && d > 0) a = Math.min(a, (vc * vc - veh.v * veh.v) / (2 * Math.max(d, 1)));
     }
 
@@ -911,9 +919,10 @@ export class Simulation {
     for (const c of ordered) {
       const [arrive, clear] = this.conflictWindow(veh, conn, c, d);
       // Never pull into the path of someone in the junction, priority or not, if we'd get there
-      // while they are still in it. A car far up the road keeps going: they'll be gone by then,
-      // and the in-junction check stops us at the zone if they aren't.
-      if (arrive < OCCUPIED_HORIZON && this.zoneOccupied(c)) return false;
+      // while they are still in it. A car far up the road keeps going if they're moving: they'll be
+      // gone by then. But if they're stuck, don't enter the box: we'd only get stuck behind them
+      // and help knot the junction (box gridlock).
+      if (this.zoneOccupied(c) && (arrive < OCCUPIED_HORIZON || this.zoneOccupied(c, QUEUED_SPEED))) return false;
       if (!c.yields) {
         // Having priority still means respecting a driver who has already committed to the gap.
         if (this.trafficConflicts(veh, c, arrive, clear, false)) return false;
@@ -998,16 +1007,16 @@ export class Simulation {
     return false;
   }
 
-  /** A vehicle on the other connector physically occupies the conflict zone. */
-  private zoneOccupied(c: ConflictRef): boolean {
+  /** A vehicle on the other connector physically occupies the conflict zone (optionally: one slower than `slowerThan`). */
+  private zoneOccupied(c: ConflictRef, slowerThan = Infinity): boolean {
     for (const x of this.connVehicles[c.other]!) {
-      if (x.s > c.sOther - 0.5 && x.s - x.length < c.sOtherEnd + 0.5) return true;
+      if (x.v < slowerThan && x.s > c.sOther - 0.5 && x.s - x.length < c.sOtherEnd + 0.5) return true;
     }
     // A vehicle that has just left a merging connector is still sitting on the shared stretch.
     if (c.kind === 'merge') {
       const other = this.network.connectors[c.other]!;
       for (const x of this.laneVehicles[other.outLane]!) {
-        if (x.connector === c.other && x.s - x.length < 0) return true;
+        if (x.v < slowerThan && x.connector === c.other && x.s - x.length < 0) return true;
       }
     }
     return false;

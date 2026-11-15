@@ -1,5 +1,6 @@
 import { legColor } from '../../render/theme';
 import { PATTERNS } from '../../scenarios/patterns';
+import { useRules } from '../levelRules';
 import { useApp } from '../store';
 import { DayChart } from './DayChart';
 import { Segmented } from './Segmented';
@@ -20,6 +21,7 @@ export function DemandPanel() {
   const setCentreLeg = useApp((s) => s.setCentreLeg);
   const jumpToHour = useApp((s) => s.jumpToHour);
   const timeOfDay = useApp((s) => s.timeOfDay);
+  const rules = useRules();
   const { legs, demand } = scenario;
   const pattern = demand.pattern;
   const preset = pattern ? PATTERNS[pattern.id] : undefined;
@@ -36,6 +38,7 @@ export function DemandPanel() {
         </span>
       </header>
 
+      {rules.demand && (
       <div className="field">
         <label>Through the day</label>
         <Segmented<string>
@@ -45,11 +48,12 @@ export function DemandPanel() {
           onChange={(id) => setPattern(id === 'flat' ? null : id)}
         />
       </div>
+      )}
 
       {pattern && preset && (
         <>
           <p className="hint">{preset.description} The table below is the peak-hour traffic.</p>
-          {preset.tidal && (
+          {preset.tidal && rules.demand && (
             <div className="field inline-field">
               <label>{preset.centreLabel}</label>
               <div className="chips">
@@ -98,6 +102,7 @@ export function DemandPanel() {
                       type="number"
                       min={0}
                       step={10}
+                      readOnly={!rules.demand}
                       aria-label={`Vehicles per hour from ${from.id} to ${to.id}`}
                       value={value(from.id, to.id)}
                       onChange={(e) => setVeh(from.id, to.id, Math.max(0, Number(e.target.value) || 0))}
@@ -111,6 +116,9 @@ export function DemandPanel() {
         </tbody>
       </table>
 
+      {!rules.demand ? (
+        <p className="hint">The level's traffic is fixed: change the junction, not the traffic.</p>
+      ) : (
       <div className="row gap">
         <button className="btn" onClick={() => scaleDemand(0.8)}>
           −20%
@@ -120,6 +128,7 @@ export function DemandPanel() {
         </button>
         <span className="hint">Applies live: watch the queues react.</span>
       </div>
+      )}
 
       {scenario.crosswalks.length > 0 && (
         <div className="field">
@@ -134,6 +143,7 @@ export function DemandPanel() {
                     type="number"
                     min={0}
                     step={10}
+                    readOnly={!rules.demand}
                     aria-label={`Pedestrians per hour crossing leg ${c.leg}`}
                     value={demand.pedestrians.find((p) => p.leg === c.leg)?.pedPerHour ?? 0}
                     onChange={(e) => setPed(c.leg, Math.max(0, Number(e.target.value) || 0))}

@@ -3,7 +3,15 @@
 A game-like traffic puzzle: you get a junction with a traffic jam and fix it by adding signals,
 lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
 
-**Status: Phase 2a.** There's a sandbox you can edit while the traffic runs:
+**Status: Phase 3.** There are six puzzle levels plus the sandbox. Open **★ Levels** to play them.
+
+- Each level gives you a jammed junction, a budget and some limits: shops that block widening, a building on a corner, crossings that must stay.
+- **Submit design** runs your design four times on the level's fixed traffic and awards up to three stars for average delay. Any gridlock fails.
+- Additions cost money: lanes 40, signals 120, roundabout 300, side road 150, flyover 600, crossings 20 or 60, turn bans 5, priority signs 10. Removing things and retiming lights is free.
+- Banned turns count as a 90 s detour, so bans are a trade-off, not a free win.
+- Best stars are saved in your browser, and each level unlocks when the previous one has a star.
+
+**Earlier phases (2a and up):** There's a sandbox you can edit while the traffic runs:
 
 - signals and the full signal plan
 - lanes per leg
@@ -50,6 +58,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/sim/metrics.ts` | Queues, delay, throughput, Level of Service A–F, gridlock flag (what the game scores on). |
 | `src/sim/safety.ts` | Collision checks used by the tests. |
 | `src/network/roundabout.ts` | Roundabout geometry (ring size, tangent entry and exit curves, flared curbs) and the ring's rules. |
+| `src/game/` | Levels (`levels.ts`), what designs cost (`costs.ts`) and how they're scored (`score.ts`). |
 | `src/scenarios/patterns.ts` | Time-of-day patterns, tidal flows, and the maths to look a factor up for any hour. |
 | `src/sim/evaluate.ts` | Headless test runs and paired statistics for the fair test. `src/app/eval.worker.ts` and `fairTest.ts` spread the runs over a pool of workers. |
 | `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |
@@ -67,6 +76,8 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 - **Entering the junction.** Near the stop line, a driver checks the signal, the room on the exit lane, conflicting traffic and pedestrians. When cleared, it *commits*.
   - Committed vehicles act as reservations: drivers with priority still respect them, and drivers who must give way ignore anyone already told to wait.
   - Under signals, turners may pull forward and wait inside the box for a gap.
+- **Looking before going.** Without a light to rely on, a driver who must give way slows to about 16 km/h at the line to look, whether or not anyone is coming. That's why unsigned junctions are slow, and why priority signs help.
+- **Don't block the box.** A driver won't enter the junction if a car stuck in it blocks their path. Otherwise the junction can knot itself into a gridlock that never clears.
 - **Signals.**
   - A controller runs the plan phase by phase: green, amber (3 s), all-red (2 s).
   - When the plan is edited it keeps its place. Lengthening a green extends the green that is showing; cutting it shorter than it has already shown ends it at once. Lights never jump mid-flow.
