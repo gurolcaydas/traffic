@@ -153,3 +153,72 @@ describe('buildNetwork: curb clearance', () => {
     });
   });
 });
+
+describe('buildNetwork: editing features', () => {
+  it('drops banned turns', () => {
+    const s = crossroad();
+    s.legs[0]!.banned = ['4'];
+    const net = buildNetwork(s);
+    expect(find(net, '1', '4')).toHaveLength(0);
+    expect(net.movementLanes.has(movementKey('1', '4'))).toBe(false);
+    expect(find(net, '1', '3')).toHaveLength(1);
+  });
+
+  it('routes the near turn through a slip lane that ignores signals and gives way', () => {
+    const s = crossroad({ control: twoPhaseSignals() });
+    s.legs[0]!.slipLane = true;
+    const net = buildNetwork(s);
+    const slip = find(net, '1', '2');
+    expect(slip).toHaveLength(1);
+    expect(slip[0]!.kind).toBe('slip');
+    expect(slip[0]!.controlled).toBe(false);
+    expect(net.lanes[slip[0]!.inLane]!.role).toBe('slip');
+    expect(slip[0]!.conflicts.every((c) => c.yields)).toBe(true);
+    // The regular lane no longer carries the right turn.
+    expect(find(net, '1', '3')[0]!.inLane).not.toBe(slip[0]!.inLane);
+  });
+
+  it('keeps the slip path off the corner island and clear of the main curb', () => {
+    for (const driveSide of ['right', 'left'] as const) {
+      for (const lanes of [1, 2]) {
+        const s = crossroad({ lanes, driveSide, crosswalks: 'zebra' });
+        s.legs.forEach((l) => (l.slipLane = true));
+        const net = buildNetwork(s);
+        for (const c of net.connectors.filter((c) => c.kind === 'slip')) {
+          for (const p of c.path.points) {
+            for (const corner of net.corners) {
+              let best = Infinity;
+              for (let i = 0; i < corner.length - 1; i++) {
+                const a = corner[i]!;
+                const b = corner[i + 1]!;
+                const dx = b.x - a.x;
+                const dy = b.y - a.y;
+                const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)));
+                best = Math.min(best, Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy));
+              }
+              expect(best).toBeGreaterThan(1.0);
+            }
+          }
+        }
+      }
+    }
+  });
+
+  it('puts flyover traffic on its own bridge lane with no ground conflicts', () => {
+    const s = crossroad({ control: twoPhaseSignals(), crosswalks: 'zebra' });
+    s.flyovers = [['1', '3']];
+    const net = buildNetwork(s);
+    for (const [a, b] of [['1', '3'], ['3', '1']] as const) {
+      const fly = find(net, a, b);
+      expect(fly).toHaveLength(1);
+      expect(fly[0]!.kind).toBe('flyover');
+      expect(fly[0]!.level).toBe(1);
+      expect(fly[0]!.controlled).toBe(false);
+      expect(fly[0]!.conflicts).toHaveLength(0);
+      expect(fly[0]!.crosswalkCrossings).toHaveLength(0);
+      expect(net.lanes[fly[0]!.inLane]!.role).toBe('flyover');
+    }
+    // Turns from the flyover legs still use the ground-level lanes.
+    expect(net.lanes[find(net, '1', '4')[0]!.inLane]!.role).toBe('regular');
+  });
+});

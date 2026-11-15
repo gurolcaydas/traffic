@@ -17,6 +17,8 @@ export function overlappingVehicles(sim: Simulation): Array<[Vehicle, Vehicle]> 
     for (let j = i + 1; j < bodies.length; j++) {
       const a = bodies[i]!;
       const b = bodies[j]!;
+      // One on the bridge, one underneath.
+      if (sim.network.connectors[a.veh.connector]!.level !== sim.network.connectors[b.veh.connector]!.level) continue;
       if (Math.hypot(a.x - b.x, a.y - b.y) > 12) continue;
       const touch = a.circles.some((p) => b.circles.some((q) => Math.hypot(p.x - q.x, p.y - q.y) < 2 * BODY_RADIUS));
       if (touch) out.push([a.veh, b.veh]);
@@ -32,6 +34,7 @@ export function pedestrianStrikes(sim: Simulation): number {
     if (!ped.crossing) continue;
     const p = sim.pedestrianPosition(ped);
     for (const veh of sim.vehicles) {
+      if (sim.network.connectors[veh.connector]!.level !== 0) continue; // overhead on the bridge
       const { x, y, heading } = sim.pose(veh);
       // Project the pedestrian into the vehicle's frame.
       const dx = p.x - x;

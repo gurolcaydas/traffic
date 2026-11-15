@@ -1,3 +1,4 @@
+import type { MetricsSnapshot } from '../../sim/metrics';
 import { legColor } from '../../render/theme';
 import { useApp } from '../store';
 
@@ -10,12 +11,15 @@ const LOS_TEXT: Record<string, string> = {
   F: 'Jammed',
 };
 
+/** Metrics need this much simulated time before they mean anything. */
+const SETTLE = 30;
+
 const fmt = (s: number) => (s < 100 ? s.toFixed(1) : Math.round(s).toString());
 
 export function MetricsPanel({ onReset }: { onReset: () => void }) {
   const m = useApp((s) => s.metrics);
-  const setup = useApp((s) => s.setup);
-  const legIds = m?.legs.map((l) => l.leg) ?? [];
+  const scenario = useApp((s) => s.scenario);
+  const legIds = scenario.legs.map((l) => l.id);
   const maxQueue = Math.max(20, ...(m?.legs.map((l) => l.queue) ?? [0]));
 
   return (
@@ -27,7 +31,7 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
         </button>
       </header>
 
-      {!m || m.window < 30 ? (
+      {!m || m.window < SETTLE ? (
         <p className="hint">Measuring… give it a few seconds of simulated time.</p>
       ) : (
         <>
@@ -37,7 +41,7 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
             </div>
             <div>
               <div className="los-text">{m.gridlock ? 'Gridlock' : LOS_TEXT[m.los]}</div>
-              <div className="hint">Level of service, from average delay{setup.control === 'signals' ? ' (signalised)' : ''}</div>
+              <div className="hint">Level of service, from average delay{scenario.control.type === 'signals' ? ' (signalised)' : ''}</div>
             </div>
           </div>
 
@@ -56,7 +60,7 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
                 <span className="num">{Math.round(m.throughputPerHour)}</span> veh/h
               </dd>
             </div>
-            {setup.crosswalks !== 'none' && (
+            {scenario.crosswalks.length > 0 && (
               <div>
                 <dt>Ped wait</dt>
                 <dd>
@@ -64,9 +68,19 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
                 </dd>
               </div>
             )}
+            {m.diverted > 0 && (
+              <div title="Trips whose turn is banned: they had to go another way">
+                <dt>Diverted</dt>
+                <dd>
+                  <span className="num">{Math.round((m.diverted / m.window) * 3600)}</span> veh/h
+                </dd>
+              </div>
+            )}
           </dl>
         </>
       )}
+
+      <Comparison current={m} />
 
       {m && (
         <table className="legs">
@@ -98,5 +112,74 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
         </table>
       )}
     </section>
+  );
+}
+
+/** Before/after card: the design before the latest change against the design now. */
+function Comparison({ current }: { current: MetricsSnapshot | null }) {
+  const baseline = useApp((s) => s.baseline);
+  const lastEdit = useApp((s) => s.lastEdit);
+  if (!baseline || !lastEdit) return null;
+  const before = baseline.metrics;
+  const ready = current && current.window >= SETTLE;
+  const delta = (now: number, was: number, lowerIsBetter: boolean, unit: string) => {
+    const d = now - was;
+    if (Math.abs(d) < 0.05 * Math.max(1, Math.abs(was))) return <span className="delta same">≈</span>;
+    const better = lowerIsBetter ? d < 0 : d > 0;
+    return (
+      <span className={`delta ${better ? 'good' : 'bad'}`}>
+        {d > 0 ? '+' : '−'}
+        {fmt(Math.abs(d))}
+        {unit}
+      </span>
+    );
+  };
+
+  return (
+    <div className="compare">
+      <div className="compare-head">
+        <span>Before → after</span>
+        <span className="hint" title="The comparison covers the latest change">
+          {lastEdit}
+        </span>
+      </div>
+      <table>
+        <tbody>
+          <tr>
+            <th>Grade</th>
+            <td>
+              <span className={`los-chip los-${before.los}`}>{before.los}</span>
+            </td>
+            <td>{ready ? <span className={`los-chip los-${current.los}`}>{current.los}</span> : '…'}</td>
+          </tr>
+          <tr>
+            <th>Avg delay</th>
+            <td className="num">{fmt(before.avgDelay)}s</td>
+            <td className="num">
+              {ready ? (
+                <>
+                  {fmt(current.avgDelay)}s {delta(current.avgDelay, before.avgDelay, true, 's')}
+                </>
+              ) : (
+                '…'
+              )}
+            </td>
+          </tr>
+          <tr>
+            <th>Throughput</th>
+            <td className="num">{Math.round(before.throughputPerHour)}</td>
+            <td className="num">
+              {ready ? (
+                <>
+                  {Math.round(current.throughputPerHour)} {delta(current.throughputPerHour, before.throughputPerHour, false, '')}
+                </>
+              ) : (
+                '…'
+              )}
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
   );
 }

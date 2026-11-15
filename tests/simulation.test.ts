@@ -46,7 +46,7 @@ describe('Simulation', () => {
     sim.run(600);
     const c = sim.counts();
     expect(c.arrived).toBeGreaterThan(0);
-    expect(c.arrived).toBe(c.exited + c.onMap + c.backlog);
+    expect(c.arrived).toBe(c.exited + c.onMap + c.backlog + c.diverted + c.removed);
   });
 
   it('delivers light traffic with little delay', () => {
@@ -166,5 +166,96 @@ describe('Pedestrians', () => {
     }
     expect(sim.getMetrics().pedCrossed).toBeGreaterThan(50);
     expect(badStarts).toBe(0);
+  });
+});
+
+describe('Editing features in motion', () => {
+  it('slip lanes and a flyover run collision-free and carry traffic', () => {
+    const s = crossroad({ vehPerHourPerLeg: 500, control: twoPhaseSignals(25), crosswalks: 'zebra', pedPerHourPerCrosswalk: 100 });
+    s.legs.forEach((l) => (l.slipLane = true));
+    s.flyovers = [['1', '3']];
+    const { sim, collisions, strikes } = runChecked(s, 600);
+    expect(collisions).toBe(0);
+    expect(strikes).toBe(0);
+    expect(sim.getMetrics().completed).toBeGreaterThan(200);
+  });
+
+  it('a flyover beats a plain signalised junction for heavy through traffic', () => {
+    const plain = crossroad({ vehPerHourPerLeg: 600, control: twoPhaseSignals(25) });
+    const fly = crossroad({ vehPerHourPerLeg: 600, control: twoPhaseSignals(25) });
+    fly.flyovers = [['1', '3'], ['2', '4']];
+    const delay = (s: Scenario) => {
+      const sim = new Simulation(s);
+      sim.run(120);
+      sim.resetMetrics();
+      sim.run(900);
+      return sim.getMetrics().avgDelay;
+    };
+    expect(delay(fly)).toBeLessThan(delay(plain));
+  });
+});
+
+describe('Live editing (applyScenario)', () => {
+  /** A sequence of edits a player might make, applied one per minute while traffic runs. */
+  const edits: Array<(s: Scenario) => void> = [
+    (s) => s.legs.forEach((l) => ((l.lanesIn = 2), (l.lanesOut = 2))),
+    (s) => (s.control = twoPhaseSignals(25)),
+    (s) => (s.legs[0]!.slipLane = true),
+    (s) => (s.crosswalks = s.legs.map((l) => ({ leg: l.id, type: 'signal' as const }))),
+    (s) => (s.flyovers = [['1', '3']]),
+    (s) => (s.legs[1]!.banned = ['3']),
+    (s) => (s.legs[2]!.lanesIn = 1),
+    (s) => (s.flyovers = []),
+    (s) => (s.control = { type: 'priority', major: ['1', '3'] }),
+    (s) => s.legs.forEach((l) => ((l.lanesIn = 1), (l.lanesOut = 1), (l.slipLane = false))),
+  ];
+
+  it('keeps every vehicle accounted for and keeps driving collision-free between edits', () => {
+    const scenario = crossroad({ vehPerHourPerLeg: 400, pedPerHourPerCrosswalk: 100 });
+    const sim = new Simulation(scenario);
+    sim.run(60);
+    let collisions = 0;
+    for (const edit of edits) {
+      const next = structuredClone(sim.scenario);
+      edit(next);
+      sim.applyScenario(next);
+      // Geometry changes under cars mid-junction can overlap for a moment; judge from 3 s after the edit.
+      for (let i = 0; i < 600; i++) {
+        sim.step();
+        if (i >= 30 && i % 5 === 0) collisions += overlappingVehicles(sim).length;
+      }
+      const c = sim.counts();
+      expect(c.arrived).toBe(c.exited + c.onMap + c.backlog + c.diverted + c.removed);
+    }
+    expect(collisions).toBe(0);
+    expect(sim.counts().exited).toBeGreaterThan(200);
+  });
+
+  it('keeps vehicles in place across an edit', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 300 }));
+    sim.run(90);
+    const before = new Map(sim.vehicles.filter((v) => v.seg === 0).map((v) => [v.id, sim.pose(v)]));
+    expect(before.size).toBeGreaterThan(3);
+    const next = structuredClone(sim.scenario);
+    next.control = twoPhaseSignals(25);
+    sim.applyScenario(next);
+    for (const v of sim.vehicles) {
+      const p = before.get(v.id);
+      if (!p) continue;
+      const q = sim.pose(v);
+      expect(Math.hypot(p.x - q.x, p.y - q.y)).toBeLessThan(1);
+    }
+  });
+
+  it('diverts demand for a banned turn instead of queueing it', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 300 }));
+    sim.run(60);
+    const next = structuredClone(sim.scenario);
+    next.legs.forEach((l) => (l.banned = next.legs.filter((o) => o.id !== l.id).slice(-1).map((o) => o.id)));
+    sim.applyScenario(next);
+    sim.resetMetrics();
+    sim.run(600);
+    expect(sim.getMetrics().diverted).toBeGreaterThan(50);
+    expect(sim.getMetrics().gridlock).toBe(false);
   });
 });

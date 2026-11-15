@@ -1,4 +1,3 @@
-import { legsFor } from '../../scenarios/setup';
 import { legColor } from '../../render/theme';
 import { useApp } from '../store';
 
@@ -10,14 +9,14 @@ const Badge = ({ i, id }: { i: number; id: string }) => (
 
 /** Origin–destination table: vehicles per hour from each leg (rows) to each leg (columns). */
 export function DemandPanel() {
-  const setup = useApp((s) => s.setup);
-  const demand = useApp((s) => s.demand);
+  const scenario = useApp((s) => s.scenario);
   const setVeh = useApp((s) => s.setVehicleDemand);
   const setPed = useApp((s) => s.setPedDemand);
   const scaleDemand = useApp((s) => s.scaleDemand);
-  const legs = legsFor(setup);
+  const { legs, demand } = scenario;
   const value = (from: string, to: string) => demand.vehicles.find((d) => d.from === from && d.to === to)?.vehPerHour ?? 0;
   const total = demand.vehicles.reduce((s, d) => s + d.vehPerHour, 0);
+  const banned = (from: string, to: string) => legs.find((l) => l.id === from)?.banned?.includes(to) ?? false;
 
   return (
     <section className="panel">
@@ -50,7 +49,7 @@ export function DemandPanel() {
                 to.id === from.id ? (
                   <td key={to.id} className="diag" />
                 ) : (
-                  <td key={to.id}>
+                  <td key={to.id} className={banned(from.id, to.id) ? 'banned' : ''} title={banned(from.id, to.id) ? 'Turn banned: these trips divert elsewhere' : undefined}>
                     <input
                       type="number"
                       min={0}
@@ -78,23 +77,26 @@ export function DemandPanel() {
         <span className="hint">Applies live: watch the queues react.</span>
       </div>
 
-      {setup.crosswalks !== 'none' && (
+      {scenario.crosswalks.length > 0 && (
         <div className="field">
           <label>Pedestrians per hour, per crossing</label>
           <div className="ped-grid">
-            {legs.map((l, i) => (
-              <label key={l.id} className="ped-cell">
-                <Badge i={i} id={l.id} />
-                <input
-                  type="number"
-                  min={0}
-                  step={10}
-                  aria-label={`Pedestrians per hour crossing leg ${l.id}`}
-                  value={demand.pedestrians.find((p) => p.leg === l.id)?.pedPerHour ?? 0}
-                  onChange={(e) => setPed(l.id, Math.max(0, Number(e.target.value) || 0))}
-                />
-              </label>
-            ))}
+            {scenario.crosswalks.map((c) => {
+              const i = legs.findIndex((l) => l.id === c.leg);
+              return (
+                <label key={c.leg} className="ped-cell">
+                  <Badge i={i} id={c.leg} />
+                  <input
+                    type="number"
+                    min={0}
+                    step={10}
+                    aria-label={`Pedestrians per hour crossing leg ${c.leg}`}
+                    value={demand.pedestrians.find((p) => p.leg === c.leg)?.pedPerHour ?? 0}
+                    onChange={(e) => setPed(c.leg, Math.max(0, Number(e.target.value) || 0))}
+                  />
+                </label>
+              );
+            })}
           </div>
         </div>
       )}

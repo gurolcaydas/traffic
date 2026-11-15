@@ -18,6 +18,7 @@ import {
   type Connector,
   type Crosswalk,
   type Lane,
+  type LaneRole,
   type LegGeometry,
   type Network,
   type TurnKind,
@@ -33,85 +34,106 @@ const CURB_RETURN = 5;
 
 export function buildNetwork(scenario: Scenario): Network {
   const side = scenario.driveSide === 'right' ? 1 : -1;
-  const legs = buildLegGeometry(scenario, side);
+  const flyPartner = flyoverPartners(scenario);
+  const legs = buildLegGeometry(scenario, side, flyPartner);
 
+  // Lanes. Inbound, from the median outwards: flyover lane, regular lanes, slip lane.
   const lanes: Lane[] = [];
   const laneOf = new Map<string, number>();
+  const addLane = (key: string, lane: Omit<Lane, 'idx'>) => {
+    laneOf.set(key, lanes.length);
+    lanes.push({ idx: lanes.length, ...lane });
+  };
   for (const spec of scenario.legs) {
     const g = legs.get(spec.id)!;
     const speed = spec.speedLimit ?? DEFAULTS.speedLimit;
-    for (let k = 0; k < spec.lanesIn; k++) {
-      const off = g.medianWidth / 2 + (spec.lanesIn - 1 - k + 0.5) * g.laneWidth;
-      const start = along(g, g.length, off);
-      const end = along(g, g.stopLine, off);
-      laneOf.set(`${spec.id}/in/${k}`, lanes.length);
-      lanes.push({ idx: lanes.length, leg: spec.id, kind: 'in', index: k, path: new Polyline([start, end]), speedLimit: speed, width: g.laneWidth });
-    }
-    for (let k = 0; k < spec.lanesOut; k++) {
-      const off = -(g.medianWidth / 2 + (spec.lanesOut - 1 - k + 0.5) * g.laneWidth);
-      const start = along(g, g.stopLine, off);
-      const end = along(g, g.length, off);
-      laneOf.set(`${spec.id}/out/${k}`, lanes.length);
-      lanes.push({ idx: lanes.length, leg: spec.id, kind: 'out', index: k, path: new Polyline([start, end]), speedLimit: speed, width: g.laneWidth });
-    }
+    const fly = flyPartner.has(spec.id) ? 1 : 0;
+    const half = g.medianWidth / 2;
+    const w = g.laneWidth;
+    const inLane = (key: string, role: LaneRole, index: number, offset: number, end = g.stopLine) =>
+      addLane(key, { leg: spec.id, kind: 'in', role, index, offset, path: new Polyline([along(g, g.length, offset), along(g, end, offset)]), speedLimit: speed, width: w });
+    const outLane = (key: string, role: LaneRole, index: number, offset: number, start = g.stopLine) =>
+      addLane(key, { leg: spec.id, kind: 'out', role, index, offset, path: new Polyline([along(g, start, offset), along(g, g.length, offset)]), speedLimit: speed, width: w });
+
+    if (fly) inLane(`${spec.id}/in/fly`, 'flyover', 0, half + 0.5 * w);
+    for (let k = 0; k < spec.lanesIn; k++) inLane(`${spec.id}/in/${k}`, 'regular', k, half + (fly + spec.lanesIn - 1 - k + 0.5) * w);
+    if (g.slipEdge !== null) inLane(`${spec.id}/in/slip`, 'slip', 0, g.slipEdge - 0.5 * w, g.slipEnd!);
+    if (fly) outLane(`${spec.id}/out/fly`, 'flyover', 0, -(half + 0.5 * w));
+    for (let k = 0; k < spec.lanesOut; k++) outLane(`${spec.id}/out/${k}`, 'regular', k, -(half + (fly + spec.lanesOut - 1 - k + 0.5) * w));
+    if (g.slipOutEdge !== null) outLane(`${spec.id}/out/slip`, 'slip', 0, -(g.slipOutEdge - 0.5 * w), g.slipOutStart!);
   }
 
   const connectors: Connector[] = [];
   const movementLanes = new Map<string, number[]>();
   const connectorsFromLane = new Map<number, number[]>();
+  const addConnector = (from: LegSpec, to: LegSpec, inLane: number, outLane: number, turn: TurnKind, kind: Connector['kind'], maxRadius: number) => {
+    const path = connectorPath(lanes[inLane]!.path, lanes[outLane]!.path, maxRadius);
+    const curveSpeed = Math.sqrt(LATERAL_ACCEL * path.minRadius());
+    const idx = connectors.length;
+    connectors.push({
+      idx,
+      from: from.id,
+      to: to.id,
+      kind,
+      level: kind === 'flyover' ? 1 : 0,
+      controlled: kind === 'normal',
+      inLane,
+      outLane,
+      path,
+      speedLimit: Math.min(lanes[inLane]!.speedLimit, curveSpeed),
+      turn,
+      conflicts: [],
+      siblings: [],
+      crosswalkCrossings: [],
+      greenPhases: [],
+    });
+    connectorsFromLane.set(inLane, [...(connectorsFromLane.get(inLane) ?? []), idx]);
+    const key = movementKey(from.id, to.id);
+    if (!movementLanes.get(key)?.includes(inLane)) movementLanes.set(key, [...(movementLanes.get(key) ?? []), inLane]);
+  };
 
   for (const from of scenario.legs) {
-    if (from.lanesIn === 0) continue;
     const gFrom = legs.get(from.id)!;
     const heading = scale(gFrom.dir, -1);
+    const banned = new Set(from.banned ?? []);
     // Destinations ordered from the near side to the far side; lane 0 (curb) serves the nearest.
-    const dests = scenario.legs
-      .filter((to) => to.id !== from.id && to.lanesOut > 0)
+    let dests = scenario.legs
+      .filter((to) => to.id !== from.id && !banned.has(to.id))
       .map((to) => ({ to, angle: turnAngle(heading, legs.get(to.id)!.dir) }))
-      .sort((a, b) => side * (a.angle - b.angle));
+      .sort((a, b) => side * (a.angle - b.angle))
+      .map((d) => ({ ...d, turn: classifyTurn(d.angle, side) }));
 
+    // Flyover: straight-through traffic to the partner leg gets its own bridge lane.
+    const partner = flyPartner.get(from.id);
+    const flyDest = dests.find((d) => d.to.id === partner);
+    if (flyDest) {
+      addConnector(from, flyDest.to, laneOf.get(`${from.id}/in/fly`)!, laneOf.get(`${flyDest.to.id}/out/fly`)!, flyDest.turn, 'flyover', Infinity);
+      dests = dests.filter((d) => d !== flyDest);
+    }
+
+    // Slip lane: the turn to the near-side neighbour bypasses the junction and joins it as an added lane.
+    const slipDest = dests.find((d) => d.to.id === gFrom.slipTarget);
+    if (slipDest) {
+      addConnector(from, slipDest.to, laneOf.get(`${from.id}/in/slip`)!, laneOf.get(`${slipDest.to.id}/out/slip`)!, slipDest.turn, 'slip', Infinity);
+      dests = dests.filter((d) => d !== slipDest);
+    }
+
+    dests = dests.filter((d) => d.to.lanesOut > 0);
     const n = from.lanesIn;
     const k = dests.length;
-    dests.forEach(({ to, angle }, rank) => {
+    if (n === 0) continue;
+    dests.forEach(({ to, turn }, rank) => {
       const lo = Math.floor((rank * n) / k);
       const hi = Math.max(lo, Math.ceil(((rank + 1) * n) / k) - 1);
-      const turn = classifyTurn(angle, side);
-      const allowed: number[] = [];
       for (let l = lo; l <= hi; l++) {
-        const outIndex =
-          turn === 'far'
-            ? clamp(to.lanesOut - 1 - (hi - l), 0, to.lanesOut - 1)
-            : clamp(l - lo, 0, to.lanesOut - 1);
+        const outIndex = turn === 'far' ? clamp(to.lanesOut - 1 - (hi - l), 0, to.lanesOut - 1) : clamp(l - lo, 0, to.lanesOut - 1);
         const inLane = laneOf.get(`${from.id}/in/${l}`)!;
         const outLane = laneOf.get(`${to.id}/out/${outIndex}`)!;
-        allowed.push(inLane);
         // A near-side turn follows the curb return, keeping its lane's distance from the curb.
-        const curbGap = Math.min(
-          gFrom.inEdge - laneOffset(gFrom, from.lanesIn, l),
-          legs.get(to.id)!.outEdge - laneOffset(legs.get(to.id)!, to.lanesOut, outIndex),
-        );
-        const path = connectorPath(lanes[inLane]!.path, lanes[outLane]!.path, turn === 'near' ? CURB_RETURN + curbGap : Infinity);
-        const curveSpeed = Math.sqrt(LATERAL_ACCEL * path.minRadius());
-        const idx = connectors.length;
-        connectors.push({
-          idx,
-          from: from.id,
-          to: to.id,
-          inLane,
-          outLane,
-          path,
-          speedLimit: Math.min(lanes[inLane]!.speedLimit, curveSpeed),
-          turn,
-          conflicts: [],
-          siblings: [],
-          crosswalkCrossings: [],
-          greenPhases: [],
-        });
-        const list = connectorsFromLane.get(inLane) ?? [];
-        list.push(idx);
-        connectorsFromLane.set(inLane, list);
+        const gTo = legs.get(to.id)!;
+        const curbGap = Math.min(gFrom.inEdge - lanes[inLane]!.offset, gTo.outEdge + lanes[outLane]!.offset);
+        addConnector(from, to, inLane, outLane, turn, 'normal', turn === 'near' ? CURB_RETURN + curbGap : Infinity);
       }
-      movementLanes.set(movementKey(from.id, to.id), allowed);
     });
   }
 
@@ -125,11 +147,37 @@ export function buildNetwork(scenario: Scenario): Network {
   return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes, corners };
 }
 
-function buildLegGeometry(scenario: Scenario, side: number): Map<string, LegGeometry> {
+/** Each leg's flyover partner, for pairs where both legs exist. */
+function flyoverPartners(scenario: Scenario): Map<string, string> {
+  const ids = new Set(scenario.legs.map((l) => l.id));
+  const out = new Map<string, string>();
+  for (const [a, b] of scenario.flyovers ?? []) {
+    if (a === b || !ids.has(a) || !ids.has(b) || out.has(a) || out.has(b)) continue;
+    out.set(a, b);
+    out.set(b, a);
+  }
+  return out;
+}
+
+/** How far before the stop line a slip lane peels away from the main road. */
+const SLIP_SETBACK = 16;
+/** Painted buffer between the main road and the slip lane, widening into the corner island. */
+const SLIP_BUFFER = 1;
+
+function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<string, string>): Map<string, LegGeometry> {
   const specs = [...scenario.legs].sort((a, b) => norm360(a.angle) - norm360(b.angle));
+  const fly = (s: LegSpec) => (flyPartner.has(s.id) ? 1 : 0);
   const halfWidth = (s: LegSpec) =>
-    (s.medianWidth ?? DEFAULTS.medianWidth) / 2 + Math.max(s.lanesIn, s.lanesOut) * (s.laneWidth ?? DEFAULTS.laneWidth);
+    (s.medianWidth ?? DEFAULTS.medianWidth) / 2 + (fly(s) + Math.max(s.lanesIn, s.lanesOut)) * (s.laneWidth ?? DEFAULTS.laneWidth);
   const hasCrosswalk = new Set(scenario.crosswalks.map((c) => c.leg));
+  // A slip lane leads to the neighbouring leg on the near side (counter-clockwise in right-hand traffic).
+  const slipTarget = new Map<string, string>();
+  specs.forEach((spec, i) => {
+    if (!spec.slipLane || specs.length < 2) return;
+    const target = specs[(i + side + specs.length) % specs.length]!;
+    if (target.lanesOut > 0 && !(spec.banned ?? []).includes(target.id)) slipTarget.set(spec.id, target.id);
+  });
+  const slipSource = new Set(slipTarget.values());
 
   const out = new Map<string, LegGeometry>();
   specs.forEach((spec, i) => {
@@ -150,6 +198,10 @@ function buildLegGeometry(scenario: Scenario, side: number): Map<string, LegGeom
     const dir = fromAngleDeg(spec.angle);
     const laneWidth = spec.laneWidth ?? DEFAULTS.laneWidth;
     const medianWidth = spec.medianWidth ?? DEFAULTS.medianWidth;
+    const inEdge = medianWidth / 2 + (fly(spec) + spec.lanesIn) * laneWidth;
+    const outEdge = medianWidth / 2 + (fly(spec) + spec.lanesOut) * laneWidth;
+    const slip = slipTarget.has(spec.id);
+    const slipIn = slipSource.has(spec.id);
     out.set(spec.id, {
       id: spec.id,
       dir,
@@ -158,9 +210,14 @@ function buildLegGeometry(scenario: Scenario, side: number): Map<string, LegGeom
       boxEdge,
       stopLine,
       crosswalkCenter,
-      inEdge: medianWidth / 2 + spec.lanesIn * laneWidth,
-      outEdge: medianWidth / 2 + spec.lanesOut * laneWidth,
-      length: Math.max(spec.length, stopLine + 10),
+      inEdge,
+      outEdge,
+      slipEdge: slip ? inEdge + SLIP_BUFFER + laneWidth : null,
+      slipEnd: slip ? stopLine + SLIP_SETBACK : null,
+      slipOutEdge: slipIn ? outEdge + SLIP_BUFFER + laneWidth : null,
+      slipOutStart: slipIn ? stopLine + SLIP_SETBACK : null,
+      slipTarget: slipTarget.get(spec.id) ?? null,
+      length: Math.max(spec.length, stopLine + SLIP_SETBACK + 10),
       laneWidth,
       medianWidth,
     });
@@ -182,9 +239,6 @@ function classifyTurn(angle: number, side: number): TurnKind {
   // Right-hand traffic: a right turn (negative angle) stays on the near side.
   return angle * side < 0 ? 'near' : 'far';
 }
-
-/** Distance of lane `index` (0 = curb) from the leg centreline. */
-const laneOffset = (g: LegGeometry, lanes: number, index: number) => g.medianWidth / 2 + (lanes - 1 - index + 0.5) * g.laneWidth;
 
 /**
  * Path through the junction: straight on, a circular arc of at most `maxRadius`, straight out.
@@ -235,6 +289,7 @@ function assignSignalPhases(scenario: Scenario, connectors: Connector[]) {
   if (scenario.control.type !== 'signals') return;
   scenario.control.phases.forEach((phase, p) => {
     for (const c of connectors) {
+      if (!c.controlled) continue;
       if (phase.movements.some((m) => m.from === c.from && (m.to === '*' || m.to === c.to))) {
         c.greenPhases.push(p);
       }
@@ -246,6 +301,8 @@ const TURN_RANK: Record<TurnKind, number> = { through: 0, near: 1, far: 2 };
 
 /** Returns true if connector a must give way to connector b. */
 function aYieldsToB(scenario: Scenario, legs: Map<string, LegGeometry>, a: Connector, b: Connector, side: number): boolean {
+  // A slip lane merges in under a give-way sign.
+  if ((a.kind === 'slip') !== (b.kind === 'slip')) return a.kind === 'slip';
   const control = scenario.control;
   if (control.type === 'priority' && control.major.length > 0) {
     const aMajor = control.major.includes(a.from);
@@ -265,6 +322,7 @@ function findConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, conne
     for (let j = i + 1; j < connectors.length; j++) {
       const a = connectors[i]!;
       const b = connectors[j]!;
+      if (a.level !== b.level) continue; // one passes over the other
       if (a.inLane === b.inLane) {
         // Diverging from one lane: car-following until the paths have split apart.
         a.siblings.push({ other: j, until: closeStretch(b.path, a.path)?.[1] ?? 0 });
@@ -333,6 +391,7 @@ function buildCrosswalks(scenario: Scenario, legs: Map<string, LegGeometry>, con
     }
     const cw: Crosswalk = { idx, leg: spec.leg, type: spec.type, path, width: DEFAULTS.crosswalkWidth, crossings: [], greenPhases };
     for (const conn of connectors) {
+      if (conn.level !== 0) continue;
       const hits = polylineIntersections(conn.path, path);
       for (const h of hits) {
         cw.crossings.push({ connector: conn.idx, s: h.sp, sCrosswalk: h.sq });

@@ -33,22 +33,28 @@ export interface MetricsSnapshot {
   los: Los;
   pedCrossed: number;
   pedAvgWait: number;
+  /** Trips that could not use this junction because their turn is banned. */
+  diverted: number;
   legs: LegMetrics[];
   gridlock: boolean;
 }
 
 interface LegAccumulator {
   completed: number;
-  delay: number;
+  /** Vehicle-seconds lost to waiting and slowing, by trips that arrived since the metrics started. */
+  lost: number;
+  arrivals: number;
   maxQueue: number;
 }
 
 export class MetricsCollector {
   private start = 0;
   private completed = 0;
-  private delay = 0;
+  private lost = 0;
+  private arrivals = 0;
   private pedCrossed = 0;
   private pedWait = 0;
+  private diverted = 0;
   private legs = new Map<LegId, LegAccumulator>();
 
   constructor(legIds: LegId[], time = 0) {
@@ -58,20 +64,49 @@ export class MetricsCollector {
   reset(legIds: LegId[], time: number) {
     this.start = time;
     this.completed = 0;
-    this.delay = 0;
+    this.lost = 0;
+    this.arrivals = 0;
     this.pedCrossed = 0;
     this.pedWait = 0;
-    this.legs = new Map(legIds.map((id) => [id, { completed: 0, delay: 0, maxQueue: 0 }]));
+    this.diverted = 0;
+    this.legs = new Map(legIds.map((id) => [id, { completed: 0, lost: 0, arrivals: 0, maxQueue: 0 }]));
   }
 
-  recordTrip(from: LegId, delay: number) {
+  /** When the current measurement window began. Trips that arrived earlier don't count towards delay. */
+  get startTime() {
+    return this.start;
+  }
+
+  recordArrival(leg: LegId) {
+    this.arrivals++;
+    const l = this.legs.get(leg);
+    if (l) l.arrivals++;
+  }
+
+  /**
+   * Delay is accumulated while it happens rather than when trips finish, so a queue that hasn't
+   * cleared yet still counts. Only trips that arrived in the current window are passed in here.
+   */
+  addLostTime(leg: LegId, seconds: number) {
+    this.lost += seconds;
+    const l = this.legs.get(leg);
+    if (l) l.lost += seconds;
+  }
+
+  recordTrip(from: LegId) {
     this.completed++;
-    this.delay += delay;
     const l = this.legs.get(from);
-    if (l) {
-      l.completed++;
-      l.delay += delay;
-    }
+    if (l) l.completed++;
+  }
+
+  recordDiverted() {
+    this.diverted++;
+  }
+
+  /** After a layout edit: start tracking legs that are new, keep the rest. */
+  ensureLegs(legIds: LegId[]) {
+    for (const id of legIds) if (!this.legs.has(id)) this.legs.set(id, { completed: 0, lost: 0, arrivals: 0, maxQueue: 0 });
+    for (const id of [...this.legs.keys()]) if (!legIds.includes(id)) this.legs.delete(id);
   }
 
   recordCrossing(wait: number) {
@@ -91,7 +126,7 @@ export class MetricsCollector {
     gridlock: boolean,
   ): MetricsSnapshot {
     const window = Math.max(time - this.start, 1e-9);
-    const avgDelay = this.completed ? this.delay / this.completed : 0;
+    const avgDelay = this.arrivals ? this.lost / this.arrivals : 0;
     return {
       window,
       completed: this.completed,
@@ -100,13 +135,14 @@ export class MetricsCollector {
       los: levelOfService(avgDelay, signalised),
       pedCrossed: this.pedCrossed,
       pedAvgWait: this.pedCrossed ? this.pedWait / this.pedCrossed : 0,
+      diverted: this.diverted,
       legs: [...this.legs].map(([leg, a]) => ({
         leg,
         queue: current.get(leg)?.queue ?? 0,
         backlog: current.get(leg)?.backlog ?? 0,
         maxQueue: a.maxQueue,
         completed: a.completed,
-        avgDelay: a.completed ? a.delay / a.completed : 0,
+        avgDelay: a.arrivals ? a.lost / a.arrivals : 0,
       })),
       gridlock,
     };

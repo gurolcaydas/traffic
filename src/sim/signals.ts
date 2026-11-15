@@ -35,3 +35,8 @@ export function stateFor(clock: SignalClock | null, greenPhases: number[]): Sign
   if (clock.stage === 'amber') return 'amber';
   return 'red';
 }
+
+/** Signal for a movement; slip lanes and flyovers are not signalised. */
+export function connectorSignal(clock: SignalClock | null, conn: { controlled: boolean; greenPhases: number[] }): SignalState {
+  return conn.controlled ? stateFor(clock, conn.greenPhases) : 'green';
+}

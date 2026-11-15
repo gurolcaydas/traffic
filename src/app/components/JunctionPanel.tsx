@@ -1,82 +1,126 @@
 import { SHAPES, type Shape } from '../../scenarios/setup';
-import { useApp } from '../store';
+import {
+  controlChoice,
+  crossingOf,
+  flyoverCandidates,
+  hasFlyover,
+  setAllCrossings,
+  setAllLanes,
+  setControl,
+  toggleFlyover,
+  type CrossingChoice,
+} from '../../scenarios/edit';
+import { currentSetup, useApp } from '../store';
 import { Segmented } from './Segmented';
 
+const CONTROL_LABEL = { right: 'yield to right', major: 'major road', signals: 'signals' } as const;
+
 export function JunctionPanel() {
-  const setup = useApp((s) => s.setup);
-  const update = useApp((s) => s.updateSetup);
+  const scenario = useApp((s) => s.scenario);
+  const edit = useApp((s) => s.edit);
+  const newJunction = useApp((s) => s.newJunction);
+  const setup = currentSetup();
+
+  // Values shown for "all legs" controls: the shared value, or nothing if legs differ.
+  const lanes = scenario.legs.every((l) => l.lanesIn === scenario.legs[0]!.lanesIn) ? scenario.legs[0]!.lanesIn : -1;
+  const crossing = scenario.legs.every((l) => crossingOf(scenario, l.id) === crossingOf(scenario, scenario.legs[0]!.id))
+    ? crossingOf(scenario, scenario.legs[0]!.id)
+    : ('mixed' as const);
+  const flyovers = flyoverCandidates(scenario);
 
   return (
     <section className="panel">
       <header className="panel-head">
         <h2>Junction</h2>
-        <span className="hint">Changes restart the traffic</span>
+        <span className="hint">Changes apply while traffic runs</span>
       </header>
-
-      <div className="field">
-        <label>Shape</label>
-        <Segmented
-          label="Shape"
-          value={setup.shape}
-          options={(Object.keys(SHAPES) as Shape[]).map((k) => ({ value: k, label: SHAPES[k].label }))}
-          onChange={(shape) => update({ shape })}
-        />
-      </div>
-
-      <div className="field">
-        <label>Lanes each way</label>
-        <Segmented label="Lanes" value={setup.lanes} options={[1, 2, 3].map((n) => ({ value: n as 1 | 2 | 3, label: String(n) }))} onChange={(lanes) => update({ lanes })} />
-      </div>
 
       <div className="field">
         <label>Control</label>
         <Segmented
           label="Control"
-          value={setup.control}
+          value={controlChoice(scenario)}
           options={[
             { value: 'right', label: 'Yield to right', title: 'No signs: give way to traffic from the right' },
-            { value: 'major', label: 'Major road', title: 'The straight-through road has priority' },
+            { value: 'major', label: 'Major road', title: 'The straightest road has priority' },
             { value: 'signals', label: 'Signals' },
           ]}
-          onChange={(control) => update({ control })}
+          onChange={(choice) => edit(`Control: ${CONTROL_LABEL[choice]}`, (d) => setControl(d, choice))}
         />
       </div>
 
-      {setup.control === 'signals' && (
-        <div className="field">
-          <label htmlFor="green">
-            Green per phase <span className="num">{setup.green}s</span>
-          </label>
-          <input id="green" type="range" min={10} max={60} step={5} value={setup.green} onChange={(e) => update({ green: Number(e.target.value) })} />
-        </div>
-      )}
+      <div className="field">
+        <label>Lanes each way, all legs</label>
+        <Segmented
+          label="Lanes"
+          value={lanes}
+          options={[1, 2, 3].map((n) => ({ value: n, label: String(n) }))}
+          onChange={(n) => edit(`${n} lane${n > 1 ? 's' : ''} on every leg`, (d) => setAllLanes(d, n))}
+        />
+      </div>
 
       <div className="field">
-        <label>Pedestrian crossings</label>
-        <Segmented
+        <label>Pedestrian crossings, all legs</label>
+        <Segmented<CrossingChoice | 'mixed'>
           label="Crossings"
-          value={setup.crosswalks}
+          value={crossing}
           options={[
             { value: 'none', label: 'None' },
             { value: 'zebra', label: 'Zebra' },
             { value: 'signal', label: 'Signalised' },
           ]}
-          onChange={(crosswalks) => update({ crosswalks })}
+          onChange={(c) => c !== 'mixed' && edit(c === 'none' ? 'No crossings' : `${c === 'zebra' ? 'Zebra' : 'Signalised'} crossings`, (d) => setAllCrossings(d, c))}
         />
       </div>
 
-      <div className="field">
-        <label>Traffic drives on the</label>
-        <Segmented
-          label="Drive side"
-          value={setup.driveSide}
-          options={[
-            { value: 'right', label: 'Right' },
-            { value: 'left', label: 'Left' },
-          ]}
-          onChange={(driveSide) => update({ driveSide })}
-        />
-      </div>
+      {flyovers.length > 0 && (
+        <div className="field">
+          <label>Flyover (straight-through traffic on a bridge)</label>
+          <div className="chips">
+            {flyovers.map((pair) => {
+              const on = hasFlyover(scenario, pair);
+              return (
+                <button
+                  key={pair.join()}
+                  className={`chip ${on ? 'on' : ''}`}
+                  aria-pressed={on}
+                  onClick={() => edit(`${on ? 'Removed' : 'Built'} flyover ${pair[0]}–${pair[1]}`, (d) => toggleFlyover(d, pair))}
+                >
+                  {pair[0]} ⇄ {pair[1]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <p className="hint tip">Click a leg on the map to change its lanes, crossing, slip lane or allowed turns.</p>
+
+      <details className="start-over">
+        <summary>Start over with a new junction</summary>
+        <div className="field">
+          <label>Shape</label>
+          <Segmented
+            label="Shape"
+            value={setup.shape}
+            options={(Object.keys(SHAPES) as Shape[]).map((k) => ({ value: k, label: SHAPES[k].label }))}
+            onChange={(shape) => newJunction({ shape })}
+          />
+        </div>
+        <div className="field">
+          <label>Traffic drives on the</label>
+          <Segmented
+            label="Drive side"
+            value={scenario.driveSide}
+            options={[
+              { value: 'right', label: 'Right' },
+              { value: 'left', label: 'Left' },
+            ]}
+            onChange={(driveSide) => newJunction({ driveSide })}
+          />
+        </div>
+        <p className="hint">These restart the traffic and clear your changes.</p>
+      </details>
     </section>
   );
 }

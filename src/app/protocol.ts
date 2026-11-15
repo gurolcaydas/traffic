@@ -2,13 +2,15 @@ import type { Scenario } from '../core/types';
 import type { MetricsSnapshot } from '../sim/metrics';
 import type { SignalClock } from '../sim/signals';
 
-/** Floats per vehicle in a frame: x, y, heading, length, exit-leg index, acceleration. */
-export const VEH_STRIDE = 6;
+/** Floats per vehicle in a frame: x, y, heading, length, exit-leg index, acceleration, level (0 ground, 1 bridge). */
+export const VEH_STRIDE = 7;
 /** Floats per pedestrian in a frame: x, y, crossing (0/1). */
 export const PED_STRIDE = 3;
 
 export type ToWorker =
   | { type: 'load'; scenario: Scenario }
+  /** Edited layout: swap it in without stopping the traffic, and start measuring afresh. */
+  | { type: 'apply'; scenario: Scenario }
   | { type: 'setDemand'; demand: Scenario['demand'] }
   | { type: 'play' }
   | { type: 'pause' }

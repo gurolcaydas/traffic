@@ -1,12 +1,13 @@
 import { Application, Container, Graphics } from 'pixi.js';
 import type { Network } from '../network/network';
 import { PED_STRIDE, VEH_STRIDE, type Frame } from '../app/protocol';
-import { drawNetwork, drawSignals } from './drawNetwork';
+import { drawBridges, drawNetwork, drawSelection, drawSignals, legAt } from './drawNetwork';
 import { legColorNum, type CanvasTheme } from './theme';
 
 const CAR_WIDTH = 1.9;
 const TRUCK_WIDTH = 2.4;
 const PED_RADIUS = 0.4;
+const SELECT_COLOR = 0x3d7dd8;
 
 export interface Camera {
   /** Screen pixels per metre. */
@@ -24,10 +25,14 @@ export class Renderer {
   private app = new Application();
   private world = new Container();
   private roads = new Graphics();
+  private selection = new Graphics();
   private signals = new Graphics();
   private vehicles = new Graphics();
+  private bridges = new Graphics();
+  private bridgeVehicles = new Graphics();
   private peds = new Graphics();
   private network: Network | null = null;
+  private selectedLeg: string | null = null;
   private theme: CanvasTheme;
   private prev: Frame | null = null;
   private curr: Frame | null = null;
@@ -39,7 +44,11 @@ export class Renderer {
   private ready: Promise<void>;
   private destroyed = false;
 
-  constructor(private host: HTMLElement, theme: CanvasTheme) {
+  constructor(
+    private host: HTMLElement,
+    theme: CanvasTheme,
+    private onSelectLeg: (leg: string | null) => void = () => {},
+  ) {
     this.theme = theme;
     this.ready = this.init();
   }
@@ -57,7 +66,8 @@ export class Renderer {
       return;
     }
     this.host.appendChild(this.app.canvas);
-    this.world.addChild(this.roads, this.signals, this.peds, this.vehicles);
+    // Ground first, then the bridge deck and whatever is driving on it.
+    this.world.addChild(this.roads, this.selection, this.signals, this.peds, this.vehicles, this.bridges, this.bridgeVehicles);
     this.app.stage.addChild(this.world);
     this.app.ticker.add(() => this.drawDynamic());
     this.app.renderer.on('resize', () => {
@@ -68,20 +78,39 @@ export class Renderer {
     this.fit();
   }
 
-  async setNetwork(network: Network) {
+  /**
+   * Show a network. A brand-new junction (`fresh`) drops old frames and re-fits the view;
+   * an edit keeps the camera and the traffic stream as they are.
+   */
+  async setNetwork(network: Network, fresh: boolean) {
     await this.ready;
     this.network = network;
-    this.prev = this.curr = null;
-    this.userMoved = false;
-    drawNetwork(this.roads, network, this.theme);
-    this.fit();
+    if (fresh) {
+      this.prev = this.curr = null;
+      this.userMoved = false;
+    }
+    this.drawStatic();
+    if (fresh) this.fit();
   }
 
   async setTheme(theme: CanvasTheme) {
     await this.ready;
     this.theme = theme;
     this.app.renderer.background.color = theme.ground;
-    if (this.network) drawNetwork(this.roads, this.network, theme);
+    this.drawStatic();
+  }
+
+  async setSelectedLeg(leg: string | null) {
+    await this.ready;
+    this.selectedLeg = leg;
+    if (this.network) drawSelection(this.selection, this.network, leg, SELECT_COLOR);
+  }
+
+  private drawStatic() {
+    if (!this.network) return;
+    drawNetwork(this.roads, this.network, this.theme);
+    drawBridges(this.bridges, this.network, this.theme);
+    drawSelection(this.selection, this.network, this.selectedLeg, SELECT_COLOR);
   }
 
   pushFrame(frame: Frame) {
@@ -144,18 +173,29 @@ export class Renderer {
       { passive: false },
     );
     let drag: { x: number; y: number } | null = null;
+    let moved = 0;
     canvas.addEventListener('pointerdown', (e) => {
       drag = { x: e.clientX, y: e.clientY };
+      moved = 0;
       canvas.setPointerCapture(e.pointerId);
     });
     canvas.addEventListener('pointermove', (e) => {
       if (!drag) return;
+      moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y);
       this.camera = { ...this.camera, x: this.camera.x + e.clientX - drag.x, y: this.camera.y + e.clientY - drag.y };
       drag = { x: e.clientX, y: e.clientY };
       this.userMoved = true;
       this.applyCamera();
     });
-    canvas.addEventListener('pointerup', () => (drag = null));
+    canvas.addEventListener('pointerup', (e) => {
+      drag = null;
+      // A click (not a drag) selects the leg under the pointer, or clears the selection.
+      if (moved > 4 || !this.network) return;
+      const rect = canvas.getBoundingClientRect();
+      const wx = (e.clientX - rect.left - this.camera.x) / this.camera.scale;
+      const wy = -(e.clientY - rect.top - this.camera.y) / this.camera.scale;
+      this.onSelectLeg(legAt(this.network, { x: wx, y: wy }));
+    });
     canvas.addEventListener('dblclick', () => this.fit());
   }
 
@@ -170,8 +210,8 @@ export class Renderer {
     const prevIndex = new Map<number, number>();
     if (this.prev) this.prev.vehIds.forEach((id, i) => prevIndex.set(id, i));
 
-    const g = this.vehicles;
-    g.clear();
+    this.vehicles.clear();
+    this.bridgeVehicles.clear();
     for (let i = 0; i < frame.vehIds.length; i++) {
       const o = i * VEH_STRIDE;
       let x = frame.veh[o]!;
@@ -189,7 +229,8 @@ export class Renderer {
         y = py + (y - py) * alpha;
         h = h - dh * (1 - alpha);
       }
-      drawVehicle(g, x, y, h, frame.veh[o + 3]!, frame.veh[o + 4]!, frame.veh[o + 5]!, t);
+      const layer = frame.veh[o + 6]! > 0 ? this.bridgeVehicles : this.vehicles;
+      drawVehicle(layer, x, y, h, frame.veh[o + 3]!, frame.veh[o + 4]!, frame.veh[o + 5]!, t);
     }
 
     const pp = this.peds;

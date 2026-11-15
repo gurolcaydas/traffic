@@ -16,19 +16,33 @@ export interface LegGeometry {
   stopLine: number;
   /** Distance from centre of the crosswalk centreline, if the leg has one. */
   crosswalkCenter: number | null;
+  /** Outer edges of the main carriageway (flyover lanes included, slip lane not). */
   inEdge: number;
   outEdge: number;
+  /** If the leg has a slip lane: its outer edge, and where along the leg it peels off. */
+  slipEdge: number | null;
+  slipEnd: number | null;
+  /** If a neighbour's slip road joins this leg: the added lane's outer edge and where it starts. */
+  slipOutEdge: number | null;
+  slipOutStart: number | null;
+  /** The leg this leg's slip lane leads to. */
+  slipTarget: LegId | null;
   length: number;
   laneWidth: number;
   medianWidth: number;
 }
 
+export type LaneRole = 'regular' | 'slip' | 'flyover';
+
 export interface Lane {
   idx: number;
   leg: LegId;
   kind: 'in' | 'out';
-  /** 0 = curb (outermost) lane. */
+  role: LaneRole;
+  /** Among the regular lanes, 0 = curb (outermost). Special lanes use 0. */
   index: number;
+  /** Signed distance of the lane centre from the leg centreline, along the leg's inNormal. */
+  offset: number;
   path: Polyline;
   speedLimit: number;
   width: number;
@@ -60,6 +74,12 @@ export interface Connector {
   idx: number;
   from: LegId;
   to: LegId;
+  /** 'slip' bypasses the junction, 'flyover' crosses above it. */
+  kind: 'normal' | 'slip' | 'flyover';
+  /** 1 = on the bridge, so it never conflicts with ground-level traffic. */
+  level: 0 | 1;
+  /** False for movements that ignore the signals (slip lanes, flyovers). */
+  controlled: boolean;
   inLane: number;
   outLane: number;
   path: Polyline;

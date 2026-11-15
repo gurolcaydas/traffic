@@ -30,6 +30,14 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       sendFrame();
       sendMetrics();
       break;
+    case 'apply':
+      if (!sim) break;
+      sim.applyScenario(msg.scenario);
+      legIndex = new Map(msg.scenario.legs.map((l, i) => [l.id, i]));
+      sim.resetMetrics();
+      sendFrame();
+      sendMetrics();
+      break;
     case 'setDemand':
       sim?.setDemand(msg.demand);
       break;
@@ -85,6 +93,7 @@ function sendFrame() {
     veh[o + 3] = v.length;
     veh[o + 4] = legIndex.get(v.to) ?? 0;
     veh[o + 5] = v.acc;
+    veh[o + 6] = sim!.network.connectors[v.connector]!.level;
   });
   const ps = sim.pedestrians;
   const pedIds = new Int32Array(ps.length);

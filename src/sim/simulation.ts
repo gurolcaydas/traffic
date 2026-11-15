@@ -4,7 +4,7 @@ import { buildNetwork } from '../network/build';
 import { movementKey, type ConflictRef, type Connector, type Network } from '../network/network';
 import { DEFAULT_IDM, MAX_DECEL, idm, stoppingDistance, timeToTravel, type IdmParams } from './kinematics';
 import { MetricsCollector, type MetricsSnapshot } from './metrics';
-import { signalClock, stateFor, type SignalClock } from './signals';
+import { connectorSignal, signalClock, stateFor, type SignalClock } from './signals';
 
 /** Where a vehicle is on its route: approach lane, junction connector, exit lane. */
 export type Segment = 0 | 1 | 2;
@@ -28,7 +28,6 @@ export interface Vehicle {
   committed: boolean;
   /** When the vehicle wanted to enter the map (it may have waited off-map in the backlog). */
   arrivalTime: number;
-  freeFlowTime: number;
   /** Continuous time spent (nearly) stopped. */
   stoppedFor: number;
 }
@@ -72,7 +71,7 @@ const GRIDLOCK_BACKLOG = 25;
 const GRIDLOCK_STOPPED = 180;
 
 export class Simulation {
-  readonly network: Network;
+  network: Network;
   scenario: Scenario;
   readonly dt: number;
   time = 0;
@@ -91,6 +90,8 @@ export class Simulation {
   private metrics: MetricsCollector;
   private arrivedCount = 0;
   private exitedCount = 0;
+  private divertedCount = 0;
+  private removedCount = 0;
 
   constructor(scenario: Scenario, opts: { dt?: number } = {}) {
     this.scenario = scenario;
@@ -123,6 +124,7 @@ export class Simulation {
     this.index();
     this.updatePedestrians(dt);
     this.observeQueues();
+    this.accumulateDelay(dt);
     this.time += dt;
   }
 
@@ -145,7 +147,140 @@ export class Simulation {
   counts() {
     let backlog = 0;
     for (const q of this.backlog.values()) backlog += q.length;
-    return { arrived: this.arrivedCount, exited: this.exitedCount, onMap: this.vehicles.length, backlog };
+    return {
+      arrived: this.arrivedCount,
+      exited: this.exitedCount,
+      onMap: this.vehicles.length,
+      backlog,
+      diverted: this.divertedCount,
+      removed: this.removedCount,
+    };
+  }
+
+  /**
+   * Swap in an edited layout without stopping the traffic. Vehicles keep their place: on an approach
+   * they keep their distance from the far end, in the junction their progress along the turn, on an
+   * exit their distance to the map edge. Drivers whose turn is no longer possible pick the closest
+   * allowed exit; anyone who no longer fits is put back in the queue to enter.
+   */
+  applyScenario(next: Scenario) {
+    const old = this.network;
+    const net = buildNetwork(next);
+    this.network = net;
+    this.scenario = next;
+
+    for (const leg of next.legs) if (!this.backlog.has(leg.id)) this.backlog.set(leg.id, []);
+    for (const id of [...this.backlog.keys()]) {
+      if (!next.legs.some((l) => l.id === id)) {
+        this.removedCount += this.backlog.get(id)!.length;
+        this.backlog.delete(id);
+      }
+    }
+    this.metrics.ensureLegs(next.legs.map((l) => l.id));
+    this.setDemand(next.demand);
+
+    const kept: Vehicle[] = [];
+    for (const veh of this.vehicles) {
+      if (this.remap(veh, old, net)) kept.push(veh);
+      else this.removedCount++;
+    }
+    this.vehicles = kept;
+    this.index();
+    this.resolveOverlaps();
+
+    this.pedestrians = this.pedestrians.flatMap((ped) => {
+      const oldCw = old.crosswalks[ped.crosswalk]!;
+      const idx = net.crosswalks.findIndex((c) => c.leg === oldCw.leg);
+      if (idx < 0) return [];
+      const ratio = net.crosswalks[idx]!.path.length / oldCw.path.length;
+      return [{ ...ped, crosswalk: idx, s: ped.s * ratio }];
+    });
+    this.index();
+  }
+
+  /** Re-attach a vehicle to the new network. Returns false if it has nowhere to go. */
+  private remap(veh: Vehicle, old: Network, net: Network): boolean {
+    // Destination: keep it if still possible from this leg, otherwise the closest allowed exit.
+    if (!net.movementLanes.has(movementKey(veh.from, veh.to))) {
+      const wanted = old.legs.get(veh.to)!.dir;
+      const options = net.scenario.legs.filter((l) => net.movementLanes.has(movementKey(veh.from, l.id)));
+      if (options.length === 0 || veh.seg === 2) {
+        if (veh.seg !== 2) return false;
+      } else {
+        const best = options.reduce((a, b) => {
+          const da = net.legs.get(a.id)!.dir;
+          const db = net.legs.get(b.id)!.dir;
+          return da.x * wanted.x + da.y * wanted.y >= db.x * wanted.x + db.y * wanted.y ? a : b;
+        });
+        veh.to = best.id;
+      }
+    }
+
+    const oldIn = old.lanes[veh.inLane]!;
+    const oldConn = old.connectors[veh.connector]!;
+    const oldOut = old.lanes[veh.outLane]!;
+    const lanesFor = (leg: string, kind: 'in' | 'out') => net.lanes.filter((l) => l.leg === leg && l.kind === kind);
+    // Prefer the same role and position; otherwise the nearest lane by offset.
+    const closest = (candidates: typeof net.lanes, like: typeof oldIn) =>
+      candidates.find((l) => l.role === like.role && l.index === like.index) ??
+      candidates.reduce((a, b) => (Math.abs(a.offset - like.offset) <= Math.abs(b.offset - like.offset) ? a : b));
+
+    if (veh.seg === 2) {
+      const outs = lanesFor(veh.to, 'out');
+      if (outs.length === 0) return false;
+      const lane = closest(outs, oldOut);
+      const conn = net.connectors.find((c) => c.outLane === lane.idx) ?? net.connectors.find((c) => c.to === veh.to);
+      veh.outLane = lane.idx;
+      // Same distance to the far end of the road.
+      veh.s = Math.max(veh.length, lane.path.length - (oldOut.path.length - veh.s));
+      if (conn) {
+        veh.connector = conn.idx;
+        veh.inLane = conn.inLane;
+      } else {
+        veh.s = Math.max(veh.s, veh.length + 0.5); // no turn feeds this lane; keep the body on it
+      }
+      return true;
+    }
+
+    const allowed = net.movementLanes.get(movementKey(veh.from, veh.to))!.map((i) => net.lanes[i]!);
+    const lane = closest(allowed, oldIn);
+    const conn = (net.connectorsFromLane.get(lane.idx) ?? []).map((c) => net.connectors[c]!).find((c) => c.to === veh.to);
+    if (!conn) return false;
+    veh.inLane = lane.idx;
+    veh.connector = conn.idx;
+    veh.outLane = conn.outLane;
+
+    if (veh.seg === 0) {
+      veh.s = Math.min(veh.s, lane.path.length - 0.3);
+      veh.committed = false;
+    } else {
+      // Same fraction of the way through the junction.
+      veh.s = (veh.s / oldConn.path.length) * conn.path.length;
+      veh.committed = true;
+    }
+    return true;
+  }
+
+  /** After a remap two vehicles can end up on top of each other; pull followers back. */
+  private resolveOverlaps() {
+    const gap = 1;
+    const pushedOff: Vehicle[] = [];
+    for (const list of [...this.laneVehicles, ...this.connVehicles]) {
+      for (let i = 1; i < list.length; i++) {
+        const leader = list[i - 1]!;
+        const veh = list[i]!;
+        const limit = leader.s - leader.length - gap;
+        if (veh.s <= limit) continue;
+        veh.s = limit;
+        veh.v = Math.min(veh.v, leader.v);
+        // No room left on an approach lane: back into the queue to enter the map.
+        if (veh.seg === 0 && veh.s < veh.length) pushedOff.push(veh);
+      }
+    }
+    if (pushedOff.length === 0) return;
+    const off = new Set(pushedOff);
+    this.vehicles = this.vehicles.filter((v) => !off.has(v));
+    for (const veh of pushedOff) this.backlog.get(veh.from)?.unshift({ to: veh.to, arrivalTime: veh.arrivalTime });
   }
 
   /** World position and heading of a vehicle's centre, for rendering. */
@@ -168,8 +303,15 @@ export class Simulation {
     const { vehicles, pedestrians } = this.scenario.demand;
     vehicles.forEach((d, i) => {
       while (this.nextVehicleArrival[i]! <= this.time) {
-        this.backlog.get(d.from)!.push({ to: d.to, arrivalTime: this.nextVehicleArrival[i]! });
         this.arrivedCount++;
+        if (this.network.movementLanes.has(movementKey(d.from, d.to))) {
+          this.backlog.get(d.from)!.push({ to: d.to, arrivalTime: this.nextVehicleArrival[i]! });
+          this.metrics.recordArrival(d.from);
+        } else {
+          // Banned or impossible on this layout: these drivers go another way.
+          this.divertedCount++;
+          this.metrics.recordDiverted();
+        }
         this.nextVehicleArrival[i]! += this.rng.exponential(d.vehPerHour / 3600);
       }
     });
@@ -201,7 +343,9 @@ export class Simulation {
       if (!pending) continue;
       const lanes = net.movementLanes.get(movementKey(leg, pending.to));
       if (!lanes || lanes.length === 0) {
-        queue.shift(); // movement impossible on this layout; drop it
+        queue.shift(); // became impossible after an edit
+        this.divertedCount++;
+        this.metrics.recordDiverted();
         continue;
       }
       const length = this.rng.next() < 0.06 ? 9 : 4.5;
@@ -242,7 +386,6 @@ export class Simulation {
         speedFactor,
         committed: false,
         arrivalTime: pending.arrivalTime,
-        freeFlowTime: freeFlowTime(lane.path.length, lane.speedLimit, connector.path.length, connector.speedLimit, outLane.path.length),
         stoppedFor: 0,
       };
       this.vehicles.push(veh);
@@ -395,7 +538,7 @@ export class Simulation {
   /** Whether a vehicle approaching the stop line may enter the junction now. */
   private mayEnter(veh: Vehicle, conn: Connector, d: number, canStop: boolean): boolean {
     const net = this.network;
-    const signal = stateFor(this.clock, conn.greenPhases);
+    const signal = connectorSignal(this.clock, conn);
     if (signal === 'red') return !canStop && veh.committed;
     if (signal === 'amber' && canStop) return false;
 
@@ -451,7 +594,7 @@ export class Simulation {
     const net = this.network;
     const other = net.connectors[c.other]!;
     const otherIn = net.lanes[other.inLane]!;
-    const otherSignal = stateFor(this.clock, other.greenPhases);
+    const otherSignal = connectorSignal(this.clock, other);
     const accel = PRIORITY_ACCEL;
     const vmax = otherIn.speedLimit;
 
@@ -554,7 +697,7 @@ export class Simulation {
     if (veh.seg !== 2) return false;
     if (veh.s - veh.length < this.network.lanes[veh.outLane]!.path.length) return false;
     const travel = this.time + this.dt - veh.arrivalTime;
-    this.metrics.recordTrip(veh.from, Math.max(0, travel - veh.freeFlowTime));
+    this.metrics.recordTrip(veh.from);
     this.exitedCount++;
     return true;
   }
@@ -625,6 +768,23 @@ export class Simulation {
     return out;
   }
 
+  /** Time lost this step, relative to driving at free speed, for trips that arrived in the window. */
+  private accumulateDelay(dt: number) {
+    const since = this.metrics.startTime;
+    const net = this.network;
+    for (const veh of this.vehicles) {
+      if (veh.arrivalTime < since) continue;
+      const free =
+        veh.seg === 1 ? net.connectors[veh.connector]!.speedLimit : net.lanes[veh.seg === 0 ? veh.inLane : veh.outLane]!.speedLimit;
+      const lost = dt * Math.max(0, 1 - veh.v / (free * veh.speedFactor));
+      if (lost > 0) this.metrics.addLostTime(veh.from, lost);
+    }
+    // Waiting to even enter the map is all lost time.
+    for (const [leg, queue] of this.backlog) {
+      for (const p of queue) if (p.arrivalTime >= since) this.metrics.addLostTime(leg, dt);
+    }
+  }
+
   private observeQueues() {
     for (const [leg, q] of this.currentQueues()) this.metrics.observeQueue(leg, q.queue);
   }
@@ -637,15 +797,3 @@ export class Simulation {
 
 /** How far ahead of the stop line a driver at speed v starts deciding whether to enter. */
 const decisionDistance = (v: number) => Math.max(DECISION_DISTANCE, stoppingDistance(v, 2) + 10);
-
-/**
- * Travel time with nobody else around: cruise, brake for the curve, take it, accelerate back.
- * Delay is measured against this, so slowing for a corner is not counted as congestion.
- */
-function freeFlowTime(inLen: number, v: number, connLen: number, vc: number, outLen: number): number {
-  const b = 2;
-  const a = 1.0; // IDM's effective acceleration as it nears desired speed
-  const dd = Math.min(inLen, (v * v - vc * vc) / (2 * b));
-  const da = Math.min(outLen, (v * v - vc * vc) / (2 * a));
-  return (inLen - dd) / v + (v - vc) / b + connLen / vc + (v - vc) / a + (outLen - da) / v;
-}

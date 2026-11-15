@@ -524,3 +524,271 @@ input[type='number']::-webkit-inner-spin-button {
     display: none;
   }
 }
+
+/* Phase 2: editing */
+
+.leg-labels .leg-label {
+  pointer-events: auto;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
+.leg-label:hover {
+  border-color: var(--text-2);
+}
+
+.leg-label.selected {
+  border-color: var(--focus);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--focus) 35%, transparent), var(--shadow);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text-2);
+  border-radius: 999px;
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.chip:hover {
+  border-color: var(--text-2);
+}
+
+.chip.on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--surface);
+}
+
+.chip.off {
+  text-decoration: line-through;
+  color: var(--bad);
+  border-color: color-mix(in srgb, var(--bad) 45%, transparent);
+}
+
+.chip.tiny {
+  padding: 1px 7px;
+  font-size: 11px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.inspector {
+  background: color-mix(in srgb, var(--focus) 6%, var(--surface));
+}
+
+.inspector h2 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.toggles {
+  display: grid;
+  gap: 8px;
+}
+
+.toggle {
+  display: flex !important;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--text) !important;
+  font-size: 13px !important;
+  cursor: pointer;
+}
+
+.toggle input {
+  margin-top: 2px;
+  accent-color: var(--text);
+}
+
+.tip {
+  margin: 14px 0 0;
+}
+
+.start-over {
+  margin-top: 14px;
+  border-top: 1px dashed var(--border);
+  padding-top: 10px;
+}
+
+.start-over summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.od td.banned input {
+  text-decoration: line-through;
+  color: var(--bad);
+}
+
+/* Before/after */
+
+.compare {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.compare-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.compare-head .hint {
+  font-weight: 400;
+  text-align: right;
+}
+
+.compare table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.compare th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--text-2);
+  padding: 3px 0;
+}
+
+.compare td {
+  padding: 3px 0;
+}
+
+.los-chip {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.delta {
+  font-size: 11px;
+  margin-left: 4px;
+}
+
+.delta.good {
+  color: var(--good);
+}
+
+.delta.bad {
+  color: var(--bad);
+}
+
+.delta.same {
+  color: var(--text-2);
+}
+
+/* Signal plan */
+
+.phase {
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+}
+
+.phase.active {
+  border-color: var(--good);
+}
+
+.phase.active.amber {
+  border-color: #f0a020;
+}
+
+.phase.active.allRed {
+  border-color: var(--bad);
+}
+
+.phase-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.phase-head input[type='range'] {
+  flex: 1;
+}
+
+.link.danger {
+  color: var(--bad);
+}
+
+.moves {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.move-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.ped-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 12px;
+}
+
+.panel > .btn {
+  margin-top: 10px;
+}
+
+/* The app is a fixed full-window layout: nothing should ever scroll the page itself. */
+html,
+body {
+  overflow: hidden;
+}
+
+.topbar {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.controls {
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .app {
+    grid-template-columns: 1fr 320px;
+  }
+
+  .topbar {
+    gap: 12px;
+  }
+
+  .clock {
+    display: none;
+  }
+}

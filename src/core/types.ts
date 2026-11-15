@@ -24,6 +24,10 @@ export interface LegSpec {
   speedLimit?: number;
   /** Width of the painted median between in/out lanes. */
   medianWidth?: number;
+  /** Legs that drivers coming from this leg may not turn into. */
+  banned?: LegId[];
+  /** A separate near-side turning lane that bypasses the junction around a corner island. */
+  slipLane?: boolean;
 }
 
 export type CrosswalkType = 'zebra' | 'signal';
@@ -82,6 +86,8 @@ export interface Scenario {
   legs: LegSpec[];
   crosswalks: CrosswalkSpec[];
   control: ControlSpec;
+  /** Pairs of legs whose straight-through traffic crosses the junction on a bridge, in its own lane. */
+  flyovers?: Array<[LegId, LegId]>;
   demand: {
     vehicles: VehicleDemand[];
     pedestrians: PedestrianDemand[];

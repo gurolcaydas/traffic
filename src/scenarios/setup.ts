@@ -66,7 +66,8 @@ export function buildScenario(setup: Setup, demand: Scenario['demand'], seed = 1
     control: controlFor(setup, legs),
     demand: {
       vehicles: demand.vehicles.filter((d) => ids.has(d.from) && ids.has(d.to) && d.from !== d.to),
-      pedestrians: crosswalks.length ? demand.pedestrians.filter((p) => ids.has(p.leg)) : [],
+      // Kept even without crossings, so adding a crossing later has demand ready.
+      pedestrians: demand.pedestrians.filter((p) => ids.has(p.leg)),
     },
   };
 }

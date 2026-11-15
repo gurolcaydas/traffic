@@ -3,7 +3,16 @@
 A game-like traffic puzzle: you get a junction with a traffic jam and fix it by adding signals,
 lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
 
-**Status: Phase 1.** There's a sandbox: an animated top-view junction, a live demand table and live metrics. Changing the junction layout restarts the traffic; live structural editing comes in Phase 2.
+**Status: Phase 2a.** There's a sandbox you can edit while the traffic runs:
+
+- signals and the full signal plan
+- lanes per leg
+- turn bans
+- slip lanes
+- pedestrian crossings
+- flyovers
+
+A before/after card compares the design with how it was before your last change. Roundabouts are next (Phase 2b).
 
 ## Commands
 
@@ -25,6 +34,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/sim/simulation.ts` | The engine: vehicles (IDM car-following), gap acceptance, signals, pedestrians. Fixed 0.1 s step. |
 | `src/sim/metrics.ts` | Queues, delay, throughput, Level of Service A–F, gridlock flag (what the game scores on). |
 | `src/sim/safety.ts` | Collision checks used by the tests. |
+| `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |
 | `src/scenarios/templates.ts`, `setup.ts` | Parametric junctions, and the sandbox's choices (shape, lanes, control, crossings, drive side) turned into a Scenario, including an automatic signal plan. |
 | `src/app/` | React UI: the sidebar panels, the store (Zustand), and `sim.worker.ts`, which runs the simulation off the main thread and streams frames back. |
 | `src/render/` | PixiJS renderer: asphalt, curbs and markings drawn once, then signals, vehicles and pedestrians every frame, interpolated between simulation frames. |
@@ -42,4 +52,11 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 - **Pedestrians.** On a zebra, pedestrians have priority. On a signalised crossing, they walk only during their phase. Either way, they never step in front of a vehicle that can no longer stop.
 - **Turn paths.** Each turn is a straight run, a circular arc, then another straight run. Right turns (left turns in left-hand traffic) follow the curb return, so they keep their lane's distance from the curb. A test checks that every path stays on the asphalt.
 - **Calibration.** A single lane discharges about 1900 veh/h. Signal delays track Webster's formula, and a typical permissive junction gives LOS C at 200 veh/h per leg.
+- **Slip lanes and flyovers.**
+  - A slip lane is an extra curb lane that peels off before the junction, curves around a corner island, and joins the next road as an added lane. It ignores the signals.
+  - A flyover gives straight-through traffic its own lane on a bridge. Bridge traffic never conflicts with traffic or pedestrians below.
+- **Live editing.** `Simulation.applyScenario` swaps in an edited layout under running traffic.
+  - Vehicles keep their place: on an approach they keep their distance from the far end, inside the junction their progress through the turn, and on an exit their distance to the map edge.
+  - Drivers whose turn is gone take the closest allowed exit. New trips for a banned turn are counted as *diverted*.
+- **Delay.** Lost time is accumulated as it happens: below free speed, or waiting to enter the map. It's divided by the number of trips that started in the window. A queue that hasn't cleared still counts, and after an edit only trips that started under the new design count.
 - **Determinism.** The same scenario and seed always play out identically.

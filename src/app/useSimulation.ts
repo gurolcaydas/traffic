@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildNetwork } from '../network/build';
 import { Renderer } from '../render/Renderer';
 import { DARK, LIGHT } from '../render/theme';
-import type { Network } from '../network/network';
 import type { FromWorker, ToWorker } from './protocol';
-import { currentScenario, useApp } from './store';
+import { useApp } from './store';
 
 /** Resolves the theme choice against the OS setting and keeps <html data-theme> in sync. */
 export function useResolvedTheme(): 'light' | 'dark' {
@@ -32,11 +31,17 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
   const worker = useRef<Worker | null>(null);
   const rendererRef = useRef<Renderer | null>(null);
   const [renderer, setRenderer] = useState<Renderer | null>(null);
-  const [network, setNetwork] = useState<Network | null>(null);
   const layoutVersion = useApp((s) => s.layoutVersion);
-  const demand = useApp((s) => s.demand);
+  const editVersion = useApp((s) => s.editVersion);
+  const scenario = useApp((s) => s.scenario);
+  const demand = scenario.demand;
   const playing = useApp((s) => s.playing);
   const speed = useApp((s) => s.speed);
+  const selectedLeg = useApp((s) => s.selectedLeg);
+
+  // The network only depends on the layout, not on demand.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const network = useMemo(() => buildNetwork(useApp.getState().scenario), [layoutVersion, editVersion]);
 
   const send = (msg: ToWorker) => worker.current?.postMessage(msg);
 
@@ -62,7 +67,7 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
 
   useEffect(() => {
     if (!host.current) return;
-    const r = new Renderer(host.current, theme === 'dark' ? DARK : LIGHT);
+    const r = new Renderer(host.current, theme === 'dark' ? DARK : LIGHT, (leg) => useApp.getState().selectLeg(leg));
     rendererRef.current = r;
     setRenderer(r);
     return () => {
@@ -77,20 +82,29 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
     renderer?.setTheme(theme === 'dark' ? DARK : LIGHT);
   }, [renderer, theme]);
 
-  // Layout changed: rebuild the network and restart the simulation.
+  // New junction: restart the simulation and re-fit the view.
   useEffect(() => {
-    const scenario = currentScenario(useApp.getState());
-    const net = buildNetwork(scenario);
-    setNetwork(net);
-    renderer?.setNetwork(net);
-    send({ type: 'load', scenario });
+    renderer?.setNetwork(network, true);
+    send({ type: 'load', scenario: useApp.getState().scenario });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [layoutVersion, renderer]);
 
-  // Demand changed: apply it live, without restarting.
+  // Edit: swap the layout under the running traffic; keep the camera where the player left it.
   useEffect(() => {
-    send({ type: 'setDemand', demand: currentScenario(useApp.getState()).demand });
+    if (editVersion === 0) return;
+    renderer?.setNetwork(network, false);
+    send({ type: 'apply', scenario: useApp.getState().scenario });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editVersion]);
+
+  // Demand changed: apply it live, without touching the layout.
+  useEffect(() => {
+    send({ type: 'setDemand', demand });
   }, [demand]);
 
+  useEffect(() => {
+    renderer?.setSelectedLeg(selectedLeg);
+  }, [renderer, selectedLeg]);
   useEffect(() => send({ type: playing ? 'play' : 'pause' }), [playing]);
   useEffect(() => send({ type: 'speed', speed }), [speed]);
 

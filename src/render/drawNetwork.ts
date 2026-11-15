@@ -1,13 +1,15 @@
 import type { Graphics } from 'pixi.js';
 import { add, scale, sub, type Vec2 } from '../core/geometry';
-import type { LegGeometry, Network } from '../network/network';
-import { stateFor, type SignalClock, type SignalState } from '../sim/signals';
+import type { Connector, Lane, LegGeometry, Network } from '../network/network';
+import { connectorSignal, stateFor, type SignalClock, type SignalState } from '../sim/signals';
 import type { CanvasTheme } from './theme';
 
 const LINE = 0.2; // painted line width, m (a touch bolder than real paint, for legibility)
 const CURB = 0.25;
 const DASH = 3;
 const GAP = 3;
+/** How far up each flyover leg the bridge deck reaches beyond the stop line. */
+const RAMP = 26;
 
 const along = (g: LegGeometry, s: number, offset: number): Vec2 => add(scale(g.dir, s), scale(g.inNormal, offset));
 const flat = (pts: Vec2[]) => pts.flatMap((p) => [p.x, p.y]);
@@ -16,69 +18,101 @@ function legsByAngle(net: Network): LegGeometry[] {
   return [...net.legs.values()].sort((a, b) => Math.atan2(a.dir.y, a.dir.x) - Math.atan2(b.dir.y, b.dir.x));
 }
 
-/** Static layer: ground, asphalt, curbs and painted markings. */
+/** Static ground layer: asphalt, curbs, islands and painted markings. */
 export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
   g.clear();
   const legs = legsByAngle(net);
+  const slips = net.connectors.filter((c) => c.kind === 'slip');
 
-  // Asphalt: one strip per leg, overlapping in the middle.
+  // Asphalt: the main strip of each leg, the slip and added lanes beside it, the corners, the slip roads.
   for (const leg of legs) {
-    const pts = [along(leg, 0, -leg.outEdge), along(leg, leg.length, -leg.outEdge), along(leg, leg.length, leg.inEdge), along(leg, 0, leg.inEdge)];
-    g.poly(flat(pts)).fill(t.asphalt);
+    g.poly(flat(strip(leg, 0, leg.length, -leg.outEdge, leg.inEdge))).fill(t.asphalt);
+    if (leg.slipEdge !== null) g.poly(flat(strip(leg, leg.slipEnd!, leg.length, leg.inEdge, leg.slipEdge))).fill(t.asphalt);
+    if (leg.slipOutEdge !== null) g.poly(flat(strip(leg, leg.slipOutStart!, leg.length, -leg.slipOutEdge, -leg.outEdge))).fill(t.asphalt);
+  }
+  for (const curve of net.corners) g.poly(flat([{ x: 0, y: 0 }, ...curve])).fill(t.asphalt);
+  for (const c of slips) {
+    const w = net.lanes[c.inLane]!.width / 2 + 0.4;
+    g.poly(flat([...offsetLine(c.path.points, w), ...offsetLine(c.path.points, -w).reverse()])).fill(t.asphalt);
   }
 
-  // Corners between neighbouring legs, bounded by the rounded curb returns.
-  const curbs = net.corners;
-  for (const curve of curbs) g.poly(flat([{ x: 0, y: 0 }, ...curve])).fill(t.asphalt);
-
-  // Curbs: along each leg, then the corner returns.
+  // Curbs.
   for (const leg of legs) {
-    for (const off of [leg.inEdge, -leg.outEdge]) {
-      const p = along(leg, leg.boxEdge, off);
-      const q = along(leg, leg.length, off);
-      g.moveTo(p.x, p.y).lineTo(q.x, q.y);
+    const inStop = leg.slipEnd ?? leg.length;
+    const outStop = leg.slipOutStart ?? leg.length;
+    line(g, along(leg, leg.boxEdge, leg.inEdge), along(leg, inStop, leg.inEdge));
+    line(g, along(leg, leg.boxEdge, -leg.outEdge), along(leg, outStop, -leg.outEdge));
+    if (leg.slipEdge !== null) {
+      line(g, along(leg, leg.slipEnd!, leg.slipEdge), along(leg, leg.length, leg.slipEdge));
+      line(g, along(leg, leg.slipEnd!, leg.inEdge), along(leg, leg.slipEnd!, leg.slipEdge - leg.laneWidth)); // island nose
+    }
+    if (leg.slipOutEdge !== null) {
+      line(g, along(leg, leg.slipOutStart!, -leg.slipOutEdge), along(leg, leg.length, -leg.slipOutEdge));
+      line(g, along(leg, leg.slipOutStart!, -leg.outEdge), along(leg, leg.slipOutStart!, -(leg.slipOutEdge - leg.laneWidth)));
     }
   }
-  for (const c of curbs) {
-    g.moveTo(c[0]!.x, c[0]!.y);
-    for (const p of c.slice(1)) g.lineTo(p.x, p.y);
+  for (const c of net.corners) polyline(g, c);
+  for (const c of slips) {
+    const w = net.lanes[c.inLane]!.width / 2 + 0.4;
+    polyline(g, offsetLine(c.path.points, w));
+    polyline(g, offsetLine(c.path.points, -w));
   }
   g.stroke({ width: CURB, color: t.curb, cap: 'round', join: 'round' });
 
-  // Painted markings.
-  const control = net.scenario.control;
+  // Lane lines.
   for (const leg of legs) {
-    const spec = net.scenario.legs.find((l) => l.id === leg.id)!;
+    const ins = laneList(net, leg.id, 'in');
+    const outs = laneList(net, leg.id, 'out');
     const half = leg.medianWidth / 2;
-    if (spec.lanesIn > 0 && spec.lanesOut > 0) {
+    if (ins.length && outs.length) {
       const offs = leg.medianWidth > 0.3 ? [half, -half] : [0];
       for (const o of offs) line(g, along(leg, leg.stopLine, o), along(leg, leg.length, o));
     }
-    for (let k = 1; k < spec.lanesIn; k++) {
-      const o = half + k * leg.laneWidth;
-      // Solid approaching the stop line (no lane changes), dashed further back.
-      line(g, along(leg, leg.stopLine, o), along(leg, leg.stopLine + 15, o));
-      dashed(g, along(leg, leg.stopLine + 15, o), along(leg, leg.length, o));
-    }
-    for (let k = 1; k < spec.lanesOut; k++) {
-      const o = -(half + k * leg.laneWidth);
-      dashed(g, along(leg, leg.stopLine, o), along(leg, leg.length, o));
-    }
-    // Stroke now: any fill below would otherwise consume these line segments.
-    g.stroke({ width: LINE, color: t.marking, cap: 'butt' });
-
-    // Stop or give-way line across the inbound lanes.
-    if (spec.lanesIn > 0) {
-      const s = leg.stopLine;
-      const signals = control.type === 'signals';
-      const major = control.type === 'priority' && control.major.includes(leg.id);
-      if (signals) {
-        g.moveTo(...xy(along(leg, s, half))).lineTo(...xy(along(leg, s, leg.inEdge)));
-        g.stroke({ width: 0.45, color: t.marking });
-      } else if (!major) {
-        giveWay(g, leg, half, leg.inEdge, t);
+    // Between neighbouring lanes: solid near the stop line (no lane changes), dashed further back.
+    // Lines next to a flyover or slip lane are solid all the way: those lanes are chosen early.
+    for (const lanes of [ins, outs]) {
+      for (let i = 1; i < lanes.length; i++) {
+        const a = lanes[i - 1]!;
+        const b = lanes[i]!;
+        if (a.role === 'slip' || b.role === 'slip') continue;
+        const o = (a.offset + b.offset) / 2;
+        const solid = a.role !== b.role;
+        if (solid) line(g, along(leg, leg.stopLine, o), along(leg, leg.length, o));
+        else if (a.kind === 'in') {
+          line(g, along(leg, leg.stopLine, o), along(leg, leg.stopLine + 15, o));
+          dashed(g, along(leg, leg.stopLine + 15, o), along(leg, leg.length, o));
+        } else dashed(g, along(leg, leg.stopLine, o), along(leg, leg.length, o));
       }
     }
+    // Slip lane buffer: two solid lines.
+    if (leg.slipEdge !== null) {
+      for (const o of [leg.inEdge, leg.slipEdge - leg.laneWidth]) line(g, along(leg, leg.slipEnd!, o), along(leg, leg.length, o));
+    }
+    if (leg.slipOutEdge !== null) {
+      for (const o of [-leg.outEdge, -(leg.slipOutEdge - leg.laneWidth)]) line(g, along(leg, leg.slipOutStart!, o), along(leg, leg.length, o));
+    }
+  }
+  // Stroke now: any fill below would otherwise consume these line segments.
+  g.stroke({ width: LINE, color: t.marking, cap: 'butt' });
+
+  // Stop or give-way lines across the regular lanes, and turn arrows.
+  const control = net.scenario.control;
+  for (const leg of legs) {
+    const regular = laneList(net, leg.id, 'in').filter((l) => l.role === 'regular');
+    if (!regular.length) continue;
+    const lo = Math.min(...regular.map((l) => l.offset)) - leg.laneWidth / 2;
+    const hi = Math.max(...regular.map((l) => l.offset)) + leg.laneWidth / 2;
+    if (control.type === 'signals') {
+      line(g, along(leg, leg.stopLine, lo), along(leg, leg.stopLine, hi));
+      g.stroke({ width: 0.45, color: t.marking });
+    } else if (!control.major.includes(leg.id)) {
+      giveWay(g, leg, lo, hi, t);
+    }
+  }
+  for (const lane of net.lanes) {
+    if (lane.kind !== 'in') continue;
+    const turns = (net.connectorsFromLane.get(lane.idx) ?? []).map((c) => net.connectors[c]!);
+    if (turns.length) drawArrow(g, net, lane, turns, t);
   }
 
   // Zebra crossings.
@@ -86,10 +120,45 @@ export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
     const leg = net.legs.get(cw.leg)!;
     const c = leg.crosswalkCenter!;
     for (let o = -leg.outEdge + 0.4; o < leg.inEdge - 0.2; o += 1.0) {
-      const pts = [along(leg, c - cw.width / 2, o), along(leg, c + cw.width / 2, o), along(leg, c + cw.width / 2, o + 0.5), along(leg, c - cw.width / 2, o + 0.5)];
-      g.poly(flat(pts)).fill(t.marking);
+      g.poly(flat(strip(leg, c - cw.width / 2, c + cw.width / 2, o, o + 0.5))).fill(t.marking);
     }
   }
+}
+
+/** Bridge decks for flyovers, drawn above ground-level traffic. */
+export function drawBridges(g: Graphics, net: Network, t: CanvasTheme) {
+  g.clear();
+  const done = new Set<string>();
+  for (const c of net.connectors) {
+    const key = [c.from, c.to].sort().join();
+    if (c.kind !== 'flyover' || done.has(key)) continue;
+    done.add(key);
+    const a = net.legs.get(c.from)!;
+    const b = net.legs.get(c.to)!;
+    const w = a.medianWidth / 2 + a.laneWidth + 0.6;
+    const sa = a.stopLine + RAMP;
+    const sb = b.stopLine + RAMP;
+    const deck = [along(a, sa, w), along(a, sa, -w), along(b, sb, w), along(b, sb, -w)];
+    g.poly(flat(deck.map((p) => add(p, { x: 0.9, y: -0.9 })))).fill({ color: 0x000000, alpha: 0.22 });
+    g.poly(flat(deck)).fill(t.asphalt);
+    // Parapets on both long sides, then the painted centre line and the ramp ends.
+    line(g, deck[0]!, deck[3]!);
+    line(g, deck[1]!, deck[2]!);
+    g.stroke({ width: 0.45, color: t.curb });
+    dashed(g, along(a, sa, 0), along(b, sb, 0));
+    g.stroke({ width: LINE, color: t.marking });
+    for (const [leg, s] of [[a, sa], [b, sb]] as const) line(g, along(leg, s, w), along(leg, s, -w));
+    g.stroke({ width: 0.25, color: t.curb, alpha: 0.5 });
+  }
+}
+
+/** Outline the selected leg. */
+export function drawSelection(g: Graphics, net: Network, leg: string | null, accent: number) {
+  g.clear();
+  const l = leg ? net.legs.get(leg) : undefined;
+  if (!l) return;
+  const pts = strip(l, l.boxEdge, l.length, -(l.slipOutEdge ?? l.outEdge) - 0.8, (l.slipEdge ?? l.inEdge) + 0.8);
+  g.poly(flat(pts)).fill({ color: accent, alpha: 0.08 }).stroke({ width: 0.5, color: accent, alpha: 0.9 });
 }
 
 /** Per-frame layer: signal bars on stop lines and pedestrian lights. */
@@ -98,21 +167,19 @@ export function drawSignals(g: Graphics, net: Network, clock: SignalClock | null
   if (!clock) return;
   const color = (s: SignalState) => (s === 'green' ? t.green : s === 'amber' ? t.amber : t.red);
   for (const lane of net.lanes) {
-    if (lane.kind !== 'in') continue;
+    if (lane.kind !== 'in' || lane.role !== 'regular') continue;
     const leg = net.legs.get(lane.leg)!;
     const conns = (net.connectorsFromLane.get(lane.idx) ?? []).map((c) => net.connectors[c]!);
     if (conns.length === 0) continue;
     // One segment per movement, near-side turn on the curb side.
     const order = { near: 0, through: 1, far: 2 } as const;
     conns.sort((a, b) => order[a.turn] - order[b.turn]);
-    const outer = leg.medianWidth / 2 + (lanesIn(net, lane.leg) - lane.index) * leg.laneWidth;
+    const outer = lane.offset + leg.laneWidth / 2;
     const w = leg.laneWidth / conns.length;
     conns.forEach((c, i) => {
-      const o1 = outer - i * w - 0.25;
-      const o2 = outer - (i + 1) * w + 0.25;
       const s = leg.stopLine + 0.6;
-      g.moveTo(...xy(along(leg, s, o1))).lineTo(...xy(along(leg, s, o2)));
-      g.stroke({ width: 0.9, color: color(stateFor(clock, c.greenPhases)), cap: 'round' });
+      line(g, along(leg, s, outer - i * w - 0.25), along(leg, s, outer - (i + 1) * w + 0.25));
+      g.stroke({ width: 0.9, color: color(connectorSignal(clock, c)), cap: 'round' });
     });
   }
   for (const cw of net.crosswalks) {
@@ -124,10 +191,47 @@ export function drawSignals(g: Graphics, net: Network, clock: SignalClock | null
   }
 }
 
-const lanesIn = (net: Network, leg: string) => net.scenario.legs.find((l) => l.id === leg)!.lanesIn;
+/** Which leg (if any) a world point falls on. */
+export function legAt(net: Network, p: Vec2): string | null {
+  for (const g of net.legs.values()) {
+    const s = p.x * g.dir.x + p.y * g.dir.y;
+    const o = p.x * g.inNormal.x + p.y * g.inNormal.y;
+    if (s >= g.boxEdge && s <= g.length && o >= -(g.slipOutEdge ?? g.outEdge) - 2 && o <= (g.slipEdge ?? g.inEdge) + 2) return g.id;
+  }
+  return null;
+}
+
+const laneList = (net: Network, leg: string, kind: 'in' | 'out'): Lane[] =>
+  net.lanes.filter((l) => l.leg === leg && l.kind === kind).sort((a, b) => Math.abs(a.offset) - Math.abs(b.offset));
+
+function strip(leg: LegGeometry, s0: number, s1: number, o0: number, o1: number): Vec2[] {
+  return [along(leg, s0, o0), along(leg, s1, o0), along(leg, s1, o1), along(leg, s0, o1)];
+}
+
+/** Turn arrows painted on a lane, a few metres before its end. */
+function drawArrow(g: Graphics, net: Network, lane: Lane, turns: Connector[], t: CanvasTheme) {
+  const end = lane.path.pointAt(lane.path.length - 7);
+  const fwd = lane.path.directionAt(lane.path.length);
+  const left = { x: -fwd.y, y: fwd.x };
+  const P = (a: number, b: number) => add(end, add(scale(fwd, a), scale(left, b)));
+  const side = net.scenario.driveSide === 'right' ? 1 : -1;
+  line(g, P(-2.2, 0), P(0.6, 0));
+  for (const c of turns) {
+    if (c.turn === 'through') {
+      line(g, P(0.6, 0), P(1.8, 0));
+      g.poly(flat([P(2.6, 0), P(1.6, 0.55), P(1.6, -0.55)])).fill(t.marking);
+    } else {
+      // Near turns bend towards the curb (right in right-hand traffic), far turns away from it.
+      const dir = (c.turn === 'near' ? -1 : 1) * side;
+      line(g, P(0.6, 0), P(1.4, dir * 0.9));
+      g.poly(flat([P(1.7, dir * 1.55), P(1.75, dir * 0.6), P(0.95, dir * 1.1)])).fill(t.marking);
+    }
+  }
+  g.stroke({ width: 0.3, color: t.marking, alpha: 0.9, cap: 'round', join: 'round' });
+}
 
 function giveWay(g: Graphics, leg: LegGeometry, from: number, to: number, t: CanvasTheme) {
-  // A dashed line plus "shark teeth" triangles pointing at the approaching driver.
+  // "Shark teeth" triangles pointing at the approaching driver.
   const s = leg.stopLine;
   for (let o = from + 0.3; o < to - 0.3; o += 1.2) {
     const a = along(leg, s, o);
@@ -137,8 +241,25 @@ function giveWay(g: Graphics, leg: LegGeometry, from: number, to: number, t: Can
   }
 }
 
+/** A polyline shifted sideways (to the left of its direction) by d. */
+function offsetLine(pts: Vec2[], d: number): Vec2[] {
+  return pts.map((p, i) => {
+    const a = pts[Math.max(0, i - 1)]!;
+    const b = pts[Math.min(pts.length - 1, i + 1)]!;
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const l = Math.hypot(dx, dy) || 1;
+    return { x: p.x - (dy / l) * d, y: p.y + (dx / l) * d };
+  });
+}
+
 function line(g: Graphics, a: Vec2, b: Vec2) {
   g.moveTo(a.x, a.y).lineTo(b.x, b.y);
+}
+
+function polyline(g: Graphics, pts: Vec2[]) {
+  g.moveTo(pts[0]!.x, pts[0]!.y);
+  for (const p of pts.slice(1)) g.lineTo(p.x, p.y);
 }
 
 function dashed(g: Graphics, a: Vec2, b: Vec2) {
@@ -151,5 +272,3 @@ function dashed(g: Graphics, a: Vec2, b: Vec2) {
     g.moveTo(p.x, p.y).lineTo(q.x, q.y);
   }
 }
-
-const xy = (p: Vec2): [number, number] => [p.x, p.y];
