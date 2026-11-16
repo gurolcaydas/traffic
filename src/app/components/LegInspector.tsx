@@ -43,7 +43,7 @@ export function LegInspector() {
           <Segmented
             label="Lanes in"
             value={leg.lanesIn}
-            options={[0, 1, 2, 3].map((n) => ({ value: n, label: String(n), disabled: !rules.lanes || n > rules.maxLanes(leg.id) }))}
+            options={[0, 1, 2, 3, 4].map((n) => ({ value: n, label: String(n), disabled: !rules.lanes || n > rules.maxLanes(leg.id) }))}
             onChange={(n) => update(`${n} lanes in`, (l) => (l.lanesIn = n))}
           />
         </div>
@@ -52,7 +52,7 @@ export function LegInspector() {
           <Segmented
             label="Lanes out"
             value={leg.lanesOut}
-            options={[0, 1, 2, 3].map((n) => ({ value: n, label: String(n), disabled: !rules.lanes || n > rules.maxLanes(leg.id) }))}
+            options={[0, 1, 2, 3, 4].map((n) => ({ value: n, label: String(n), disabled: !rules.lanes || n > rules.maxLanes(leg.id) }))}
             onChange={(n) => update(`${n} lanes out`, (l) => (l.lanesOut = n))}
           />
         </div>

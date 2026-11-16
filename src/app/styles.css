@@ -1599,3 +1599,56 @@ input.text {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
+
+.shape-lanes {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+}
+
+.lane-stepper {
+  display: grid;
+  grid-template-columns: 26px 20px 14px 20px;
+  align-items: center;
+  gap: 3px;
+}
+
+.lane-stepper .lane-label {
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.lane-stepper .num {
+  text-align: center;
+  font-weight: 600;
+}
+
+.lane-stepper button {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.lane-stepper button:hover:not(:disabled) {
+  border-color: var(--focus);
+}
+
+.lane-stepper button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}

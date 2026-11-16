@@ -1,5 +1,5 @@
 // Saving designs: a list kept in this browser, and JSON files to take a design elsewhere.
-import type { Scenario } from '../core/types';
+import { MAX_LANES, type Scenario } from '../core/types';
 import { MAX_LEGS } from './shape';
 
 export interface SavedDesign {
@@ -61,7 +61,7 @@ export function parseScenario(input: unknown): { scenario?: Scenario; name?: str
   if (!Array.isArray(s.legs) || s.legs.length < 2 || s.legs.length > MAX_LEGS) return { error: `A design needs 2 to ${MAX_LEGS} roads.` };
   for (const l of s.legs) {
     if (!l || typeof l.id !== 'string' || typeof l.angle !== 'number' || !Number.isFinite(l.angle)) return { error: 'A road is missing its id or angle.' };
-    if (![l.lanesIn, l.lanesOut].every((n) => Number.isInteger(n) && n >= 0 && n <= 3)) return { error: `Road ${l.id} has an invalid number of lanes.` };
+    if (![l.lanesIn, l.lanesOut].every((n) => Number.isInteger(n) && n >= 0 && n <= MAX_LANES)) return { error: `Road ${l.id} has an invalid number of lanes.` };
     if (typeof l.length !== 'number' || l.length < 40 || l.length > 400) return { error: `Road ${l.id} has an invalid length.` };
   }
   if (new Set(s.legs.map((l) => l.id)).size !== s.legs.length) return { error: 'Two roads share an id.' };

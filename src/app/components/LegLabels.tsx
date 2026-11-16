@@ -12,8 +12,10 @@ export function LegLabels({ renderer, network }: { renderer: Renderer | null; ne
   const metrics = useApp((s) => s.metrics);
   const selected = useApp((s) => s.selectedLeg);
   const selectLeg = useApp((s) => s.selectLeg);
+  const editShape = useApp((s) => s.editShape);
   useEffect(() => renderer?.onCamera(setCam), [renderer]);
-  if (!cam || !network) return null;
+  // The shape editor puts its own controls on each road.
+  if (!cam || !network || editShape) return null;
 
   return (
     <div className="leg-labels">

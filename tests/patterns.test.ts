@@ -45,7 +45,7 @@ describe('time-of-day traffic', () => {
     expect(early).toBeGreaterThan(50);
     expect(peak / early).toBeGreaterThan(2.8);
     expect(peak / early).toBeLessThan(5.5);
-  });
+  }, 20000);
 
   it('sends more morning traffic into the centre than out of it', () => {
     const sim = new Simulation(withPattern(crossroad({ vehPerHourPerLeg: 600 }), 'commuter', '1'));

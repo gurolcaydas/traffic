@@ -51,7 +51,7 @@ export function JunctionPanel() {
           <button className={`btn ${editShape ? 'primary' : ''}`} aria-pressed={editShape} onClick={() => setEditShape(!editShape)}>
             ✎ {editShape ? 'Done editing shape' : 'Edit shape'}
           </button>
-          {editShape && <span className="hint">Drag a ⟲ handle to turn a road, + to add one, × to remove one. Click 🚶 on a road to add, change or remove its crossing.</span>}
+          {editShape && <span className="hint">Drag a ⟲ handle to turn a road, + to add one, × to remove one, − and + to change its lanes (up to 4 each way). Click 🚶 on a road to add, change or remove its crossing.</span>}
         </div>
       )}
 
@@ -78,7 +78,7 @@ export function JunctionPanel() {
         <Segmented
           label="Lanes"
           value={lanes}
-          options={[1, 2, 3].map((n) => ({ value: n, label: String(n) }))}
+          options={[1, 2, 3, 4].map((n) => ({ value: n, label: String(n) }))}
           onChange={(n) => edit(`${n} lane${n > 1 ? 's' : ''} on every leg`, (d) => setAllLanes(d, n))}
         />
       </div>

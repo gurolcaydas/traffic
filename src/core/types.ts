@@ -125,6 +125,9 @@ export interface Scenario {
   };
 }
 
+/** Most lanes a road can have each way. */
+export const MAX_LANES = 4;
+
 export const DEFAULTS = {
   laneWidth: 3.5,
   speedLimit: 13.9, // 50 km/h

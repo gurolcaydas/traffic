@@ -1,7 +1,7 @@
 // Turning OpenStreetMap data around a point into a playable junction. Real map data is messy:
 // roads are split into many ways, a divided road appears as two one-way ways, and lane counts are
 // often missing. This keeps what the simulator can use and says what it simplified.
-import type { ControlSpec, CrosswalkSpec, DriveSide, LegSpec, Scenario, VehicleDemand } from '../core/types';
+import { MAX_LANES, type ControlSpec, type CrosswalkSpec, type DriveSide, type LegSpec, type Scenario, type VehicleDemand } from '../core/types';
 import { autoSignalPlan } from '../scenarios/setup';
 import { MAX_LEGS, MIN_GAP } from '../scenarios/shape';
 
@@ -148,11 +148,11 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
     id: String(i + 1),
     angle: Math.round(l.angle),
     length: 120,
-    lanesIn: Math.min(3, l.lanesIn),
-    lanesOut: Math.min(3, l.lanesOut),
+    lanesIn: Math.min(MAX_LANES, l.lanesIn),
+    lanesOut: Math.min(MAX_LANES, l.lanesOut),
     ...(l.name ? { name: l.name } : {}),
   }));
-  if (kept.some((l) => l.lanesIn > 3 || l.lanesOut > 3)) notes.push('Roads with more than 3 lanes each way were narrowed to 3.');
+  if (kept.some((l) => l.lanesIn > MAX_LANES || l.lanesOut > MAX_LANES)) notes.push('Roads with more than 4 lanes each way were narrowed to 4.');
 
   // Control: a roundabout, signals at or right by the junction, priority for a clearly bigger road, or none.
   const tagged = (want: (t: Record<string, string>) => boolean) =>
@@ -295,13 +295,13 @@ function mergeBranches(branches: Branch[], notes: string[]): MergedLeg[] {
 
 /** Peak-hour traffic by road type, split across destinations in proportion to their importance. */
 function estimateDemand(legs: MergedLeg[], specs: LegSpec[]): VehicleDemand[] {
-  const weight = (l: MergedLeg) => (ROAD_CLASSES[l.highway]?.perLane ?? 150) * Math.max(1, Math.min(3, l.lanesOut));
+  const weight = (l: MergedLeg) => (ROAD_CLASSES[l.highway]?.perLane ?? 150) * Math.max(1, Math.min(MAX_LANES, l.lanesOut));
   const out: VehicleDemand[] = [];
   legs.forEach((from, i) => {
-    const lanesIn = Math.min(3, from.lanesIn);
+    const lanesIn = Math.min(MAX_LANES, from.lanesIn);
     if (lanesIn === 0) return;
     const total = (ROAD_CLASSES[from.highway]?.perLane ?? 150) * (1 + 0.6 * (lanesIn - 1));
-    const dests = legs.map((to, j) => ({ to, j })).filter(({ to, j }) => j !== i && Math.min(3, to.lanesOut) > 0);
+    const dests = legs.map((to, j) => ({ to, j })).filter(({ to, j }) => j !== i && Math.min(MAX_LANES, to.lanesOut) > 0);
     const sum = dests.reduce((s, d) => s + weight(d.to), 0);
     for (const { to, j } of dests) {
       out.push({ from: specs[i]!.id, to: specs[j]!.id, vehPerHour: Math.max(10, Math.round(((total * weight(to)) / sum) / 10) * 10) });

@@ -7,7 +7,7 @@ export type CrosswalkChoice = 'none' | 'zebra' | 'signal';
 /** The knobs the sandbox exposes. Everything else about the scenario is derived. */
 export interface Setup {
   shape: Shape;
-  lanes: 1 | 2 | 3;
+  lanes: 1 | 2 | 3 | 4;
   control: ControlChoice;
   /** Green seconds per signal phase. */
   green: number;

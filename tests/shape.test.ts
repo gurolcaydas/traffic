@@ -87,3 +87,26 @@ describe('shape edits under running traffic', () => {
     expect(sim.counts().exited).toBeGreaterThan(150);
   }, 30000);
 });
+
+describe('four-lane roads', () => {
+  it('build, run without collisions, and save', async () => {
+    const { buildScenario, defaultDemand, DEFAULT_SETUP } = await import('../src/scenarios/setup');
+    const { parseScenario } = await import('../src/scenarios/storage');
+    for (const control of ['signals', 'roundabout'] as const) {
+      const setup = { ...DEFAULT_SETUP, lanes: 4 as const, control };
+      const s = buildScenario(setup, defaultDemand(setup, 1200));
+      expect(() => buildNetwork(s)).not.toThrow();
+      const sim = new Simulation(s);
+      for (let t = 0; t < 600; t++) {
+        sim.run(1);
+        expect(overlappingVehicles(sim)).toEqual([]);
+      }
+      // The ring itself is one lane, so wider roads only add capacity where they meet lights.
+      if (control === 'signals') expect(sim.counts().exited).toBeGreaterThan(600);
+      expect(parseScenario(JSON.parse(JSON.stringify(s))).error).toBeUndefined();
+    }
+    const five = crossroad({ angles: [0, 90, 180, 270] });
+    five.legs[0]!.lanesIn = 5;
+    expect(parseScenario(JSON.parse(JSON.stringify(five))).error).toMatch(/invalid number of lanes/);
+  });
+});

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { MAX_LANES, type LegSpec } from '../../core/types';
 import type { Network } from '../../network/network';
 import type { Camera, Renderer } from '../../render/Renderer';
 import { legColor } from '../../render/theme';
@@ -14,7 +15,7 @@ const CROSSING_TEXT: Record<CrossingChoice, string> = { none: 'no crossing', zeb
 
 /**
  * On-map controls for changing the junction's shape: drag a road's handle to turn it, × to remove
- * it, + in a wide enough gap to add one, and 🚶 on a road to add, change or remove its crossing.
+ * it, + in a wide enough gap to add one, − and + to change a road's lanes, and 🚶 on a road to add, change or remove its crossing.
  * Every change applies live, like any other edit.
  */
 export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; network: Network | null }) {
@@ -27,8 +28,10 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
   useEffect(() => renderer?.onCamera(setCam), [renderer]);
   if (!editing || !cam || !network) return null;
 
-  // Handles sit part-way down each road, at a fixed distance on screen.
-  const reach = Math.min(...[...network.legs.values()].map((g) => g.length)) * 0.62;
+  // Handles sit part-way down each road, pulled in when zoomed so they stay on screen.
+  const box = host.current;
+  const inView = box ? (Math.min(box.clientWidth, box.clientHeight) / 2 - 36) / cam.scale : Infinity;
+  const reach = Math.min(Math.min(...[...network.legs.values()].map((g) => g.length)) * 0.62, inView);
   const toScreen = (angle: number, r: number) => ({ x: cam.x + Math.cos(rad(angle)) * r * cam.scale, y: cam.y - Math.sin(rad(angle)) * r * cam.scale });
   const angleAt = (clientX: number, clientY: number) => {
     const rect = host.current!.getBoundingClientRect();
@@ -129,6 +132,26 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
           );
         })}
       {!drag &&
+        scenario.legs.map((leg) => {
+          // Between the crossing button and the turn handle, clear of the crossing.
+          const g = network.legs.get(leg.id);
+          const crossingAt = g ? (g.crosswalkCenter ?? g.boxEdge + 3) : 0;
+          const p = toScreen(leg.angle, Math.max(reach * 0.62, crossingAt + 70 / cam.scale));
+          const step = (side: 'lanesIn' | 'lanesOut', by: number) => {
+            const n = leg[side] + by;
+            const other = side === 'lanesIn' ? leg.lanesOut : leg.lanesIn;
+            // A road keeps at least one lane, in one direction or the other.
+            if (n < 0 || n > MAX_LANES || (n === 0 && other === 0)) return null;
+            return () => edit(`Road ${leg.id}: ${n} lane${n === 1 ? '' : 's'} ${side === 'lanesIn' ? 'in' : 'out'}`, (d) => void (d.legs.find((l) => l.id === leg.id)![side] = n));
+          };
+          return (
+            <div key={`l${leg.id}`} className="shape-lanes" style={{ left: p.x, top: p.y }}>
+              <LaneStepper leg={leg} side="lanesIn" label="In" title="Lanes towards the junction" step={step} />
+              <LaneStepper leg={leg} side="lanesOut" label="Out" title="Lanes away from the junction" step={step} />
+            </div>
+          );
+        })}
+      {!drag &&
         slots.map((angle) => {
           const p = toScreen(angle, reach * 0.8);
           return (
@@ -144,6 +167,35 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
             </button>
           );
         })}
+    </div>
+  );
+}
+
+function LaneStepper({
+  leg,
+  side,
+  label,
+  title,
+  step,
+}: {
+  leg: LegSpec;
+  side: 'lanesIn' | 'lanesOut';
+  label: string;
+  title: string;
+  step: (side: 'lanesIn' | 'lanesOut', by: number) => (() => void) | null;
+}) {
+  const less = step(side, -1);
+  const more = step(side, 1);
+  return (
+    <div className="lane-stepper" title={title}>
+      <span className="lane-label">{label}</span>
+      <button aria-label={`Fewer lanes ${label.toLowerCase()} on road ${leg.id}`} disabled={!less} onClick={less ?? undefined}>
+        −
+      </button>
+      <span className="num">{leg[side]}</span>
+      <button aria-label={`More lanes ${label.toLowerCase()} on road ${leg.id}`} disabled={!more} onClick={more ?? undefined}>
+        +
+      </button>
     </div>
   );
 }

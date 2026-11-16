@@ -1,3 +1,4 @@
+import { MAX_LANES } from '../core/types';
 import { levelById } from '../game/levels';
 import type { Level } from '../game/types';
 import type { ControlChoice } from '../scenarios/setup';
@@ -62,7 +63,7 @@ export function rulesFor(level: Level | null): Rules {
     maxLanes: (id) => {
       const s = startLanes(id);
       if (!t.lanes || level.fixedLanes?.includes(id)) return Math.max(s?.lanesIn ?? 1, s?.lanesOut ?? 1);
-      return 3;
+      return MAX_LANES;
     },
     sideRoadBlocked: (id) => !t.sideRoads || (level.blockedCorners ?? []).includes(id),
     crossingRequired: (id) => (level.requiredCrossings ?? []).includes(id),

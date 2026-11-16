@@ -38,8 +38,8 @@ describe('importing from OpenStreetMap', () => {
     const fifth = r.legs.filter((l) => l.name === '5th Avenue');
     // One-way southbound: traffic only arrives from the north side, only leaves on the south side.
     expect(fifth.map((l) => [l.lanesIn, l.lanesOut]).sort()).toEqual([
-      [0, 3],
-      [3, 0],
+      [0, 4],
+      [4, 0],
     ]);
     expect(r.scenario.crosswalks).toHaveLength(4);
     expect(r.scenario.driveSide).toBe('right');
