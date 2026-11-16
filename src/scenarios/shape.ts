@@ -79,7 +79,7 @@ export function rotateLeg(s: Scenario, id: LegId, angle: number): boolean {
  */
 export function normalize(s: Scenario, roadsChanged: boolean) {
   const ids = new Set(s.legs.map((l) => l.id));
-  s.demand.vehicles = s.demand.vehicles.filter((d) => ids.has(d.from) && ids.has(d.to) && d.from !== d.to);
+  s.demand.vehicles = s.demand.vehicles.filter((d) => ids.has(d.from) && ids.has(d.to));
   s.demand.pedestrians = s.demand.pedestrians.filter((p) => ids.has(p.leg));
   s.crosswalks = s.crosswalks.filter((c) => ids.has(c.leg));
   s.flyovers = (s.flyovers ?? []).filter(([a, b]) => ids.has(a) && ids.has(b));

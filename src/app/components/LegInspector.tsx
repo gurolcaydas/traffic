@@ -19,6 +19,8 @@ export function LegInspector() {
   if (!leg) return null;
 
   const others = scenario.legs.filter((l) => l.id !== leg.id);
+  // On a roundabout drivers can also go all the way round, back onto this leg.
+  const turns = scenario.control.type === 'roundabout' ? [...others, leg] : others;
   const banned = new Set(leg.banned ?? []);
   const isMajor = scenario.control.type === 'priority' && scenario.control.major.includes(leg.id);
   const update = (label: string, change: (l: LegSpec) => void) =>
@@ -84,17 +86,39 @@ export function LegInspector() {
       <div className="field">
         <label>{t('Allowed turns from this leg', 'Bu yoldan izinli dönüşler')}</label>
         <div className="chips">
-          {others.map((to) => {
+          {turns.map((to) => {
             const ok = !banned.has(to.id);
+            const uTurn = to.id === leg.id;
             return (
               <button
                 key={to.id}
                 className={`chip ${ok ? 'on' : 'off'}`}
                 aria-pressed={ok}
-                title={ok ? t(`Ban turning into ${to.id}`, `${to.id} yoluna dönüşü yasakla`) : t(`Allow turning into ${to.id}`, `${to.id} yoluna dönüşe izin ver`)}
-                onClick={() => edit(`${t('Leg', 'Yol')} ${leg.id}: ${ok ? t(`ban turn to ${to.id}`, `${to.id} dönüşü yasak`) : t(`allow turn to ${to.id}`, `${to.id} dönüşü serbest`)}`, (d) => toggleBanned(d, leg.id, to.id))}
+                title={
+                  uTurn
+                    ? ok
+                      ? t('Ban U-turns', 'U dönüşünü yasakla')
+                      : t('Allow U-turns', 'U dönüşüne izin ver')
+                    : ok
+                      ? t(`Ban turning into ${to.id}`, `${to.id} yoluna dönüşü yasakla`)
+                      : t(`Allow turning into ${to.id}`, `${to.id} yoluna dönüşe izin ver`)
+                }
+                onClick={() =>
+                  edit(
+                    `${t('Leg', 'Yol')} ${leg.id}: ${
+                      uTurn
+                        ? ok
+                          ? t('U-turns banned', 'U dönüşü yasak')
+                          : t('U-turns allowed', 'U dönüşü serbest')
+                        : ok
+                          ? t(`ban turn to ${to.id}`, `${to.id} dönüşü yasak`)
+                          : t(`allow turn to ${to.id}`, `${to.id} dönüşü serbest`)
+                    }`,
+                    (d) => toggleBanned(d, leg.id, to.id),
+                  )
+                }
               >
-                → {to.id}
+                {uTurn ? t('↩ U-turn', '↩ U dönüşü') : `→ ${to.id}`}
               </button>
             );
           })}

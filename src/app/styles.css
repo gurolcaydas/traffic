@@ -365,6 +365,10 @@ input[type='number']::-webkit-inner-spin-button {
   border-radius: 6px;
 }
 
+.od td.uturn input {
+  background: var(--surface-2);
+}
+
 .od .sum {
   text-align: right;
   color: var(--text-2);

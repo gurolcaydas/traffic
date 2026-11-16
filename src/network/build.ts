@@ -106,9 +106,11 @@ export function buildNetwork(scenario: Scenario): Network {
     const heading = scale(gFrom.dir, -1);
     const banned = new Set(from.banned ?? []);
     // Destinations ordered from the near side to the far side; lane 0 (curb) serves the nearest.
+    // A roundabout also lets drivers go all the way round and back the way they came: the U-turn,
+    // the farthest turn of all. Elsewhere there's no room to turn round.
     let dests = scenario.legs
-      .filter((to) => to.id !== from.id && !banned.has(to.id))
-      .map((to) => ({ to, angle: turnAngle(heading, legs.get(to.id)!.dir) }))
+      .filter((to) => (to.id !== from.id || rb) && !banned.has(to.id))
+      .map((to) => ({ to, angle: to.id === from.id ? 180 * side : turnAngle(heading, legs.get(to.id)!.dir) }))
       .sort((a, b) => side * (a.angle - b.angle))
       .map((d) => ({ ...d, turn: classifyTurn(d.angle, side) }));
 
@@ -129,8 +131,12 @@ export function buildNetwork(scenario: Scenario): Network {
 
     dests = dests.filter((d) => d.to.lanesOut > 0);
     const n = from.lanesIn;
-    const k = dests.length;
     if (n === 0) continue;
+    // The U-turn takes the inside lane alongside the far turn, without changing how the other
+    // turns share the lanes.
+    const uTurn = dests.find((d) => d.to.id === from.id);
+    dests = dests.filter((d) => d !== uTurn);
+    const k = dests.length;
     dests.forEach(({ to, turn }, rank) => {
       const lo = Math.floor((rank * n) / k);
       const hi = Math.max(lo, Math.ceil(((rank + 1) * n) / k) - 1);
@@ -145,6 +151,7 @@ export function buildNetwork(scenario: Scenario): Network {
         addConnector(from, to, inLane, outLane, turn, 'normal', turn === 'near' ? CURB_RETURN + curbGap : Infinity);
       }
     });
+    if (uTurn) addConnector(from, from, laneOf.get(`${from.id}/in/${n - 1}`)!, laneOf.get(`${from.id}/out/0`)!, uTurn.turn, 'normal', Infinity);
   }
 
   assignSignalPhases(scenario, connectors);

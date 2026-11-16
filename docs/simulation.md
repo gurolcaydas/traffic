@@ -31,6 +31,7 @@ The engine is in [`src/sim/simulation.ts`](../src/sim/simulation.ts). It runs at
   - *Ring size:* the ring is the smallest one on which every entry joins well before the next leg's exit leaves.
   - *Rules from structure, not proximity:* movements that share a stretch of ring follow each other like cars in one lane. A movement joining the ring gives way to everyone already circulating past that point, from where it first comes alongside the ring.
   - *One lane:* several approach lanes enter single file, and all exits use the curb lane.
+  - *U-turns:* only on a roundabout, where drivers go almost all the way round and leave on the leg they came in on. They use the inside approach lane, alongside the far turn, without changing how the other turns share the lanes. Without a roundabout, U-turn trips count as diverted, like a banned turn.
   - *Capacity:* about 1650 veh/h, in line with published figures for one-lane roundabouts.
 - **Slip lanes and flyovers.**
   - A slip lane is an extra curb lane that peels off before the junction, curves around a corner island, and joins the next road as an added lane. It ignores the signals.

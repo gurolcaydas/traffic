@@ -9,7 +9,7 @@ Underneath is a real traffic simulation: car-following, gap acceptance, signal p
 ## Features
 
 - **Six puzzle levels.** Each gives you a jammed junction, a budget and some limits: shops that block widening, a building on a corner, crossings that must stay. Your design is scored on average delay, from one to three stars.
-- **Sandbox.** Build any junction with 2 to 6 roads at any angle and 1 to 4 lanes each way. Choose the control: yield to the right, a major road, traffic lights or a roundabout.
+- **Sandbox.** Build any junction with 2 to 6 roads at any angle and 1 to 4 lanes each way. Choose the control: yield to the right, a major road, traffic lights or a roundabout. On a roundabout, drivers can also make U-turns.
 - **Live editing.** You can change the following without restarting the traffic:
   - signal plans
   - turn bans

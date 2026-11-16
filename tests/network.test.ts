@@ -253,6 +253,29 @@ describe('buildNetwork: roundabouts', () => {
     expect(net.connectors.some((c) => c.conflicts.some((r) => r.yields))).toBe(true);
   });
 
+  it('lets drivers U-turn: all the way round, back out on the leg they came in on', () => {
+    for (const driveSide of ['right', 'left'] as const) {
+      const n = buildNetwork(crossroad({ control: { type: 'roundabout' }, driveSide, lanes: 2 }));
+      const C = 2 * Math.PI * n.roundabout!.radius;
+      const uTurn = find(n, '1', '1');
+      // From the inside lane only, like any far-side turn.
+      expect(uTurn.map((c) => n.lanes[c.inLane]!.index)).toEqual([1]);
+      expect(uTurn[0]!.turn).toBe('far');
+      // Farther round than the left turn, but short of a full lap.
+      expect(uTurn[0]!.ring!.length).toBeGreaterThan(find(n, '1', driveSide === 'right' ? '4' : '2')[0]!.ring!.length);
+      expect(uTurn[0]!.ring!.length).toBeLessThan(C);
+    }
+  });
+
+  it('has no U-turns away from a roundabout, and a U-turn can be banned', () => {
+    for (const control of [{ type: 'priority' as const, major: [] }, twoPhaseSignals()]) {
+      expect(find(buildNetwork(crossroad({ control })), '1', '1')).toHaveLength(0);
+    }
+    const s = crossroad({ control: { type: 'roundabout' } });
+    s.legs[0]!.banned = ['1'];
+    expect(find(buildNetwork(s), '1', '1')).toHaveLength(0);
+  });
+
   it('lets movements from different entries follow each other round shared stretches of ring', () => {
     const through = find(net, '1', '3')[0]!;
     const fromSouth = find(net, '4', '3')[0]!;

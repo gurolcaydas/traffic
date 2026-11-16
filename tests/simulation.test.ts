@@ -344,6 +344,48 @@ describe('Roundabouts', () => {
     }, 20000);
   }
 
+  /** A roundabout where every leg also sends `uTurns` vehicles/hour back the way they came. */
+  const withUTurns = (uTurns: number, opts: Parameters<typeof crossroad>[0] = {}) => {
+    const s = ring(opts);
+    for (const leg of s.legs) s.demand.vehicles.push({ from: leg.id, to: leg.id, vehPerHour: uTurns });
+    return s;
+  };
+
+  for (const [name, scenario] of [
+    ['U-turns', withUTurns(80, { vehPerHourPerLeg: 400 })],
+    ['U-turns, left-hand, two lanes', withUTurns(80, { vehPerHourPerLeg: 400, driveSide: 'left', lanes: 2 })],
+  ] as const) {
+    it(`runs collision-free with ${name}`, () => {
+      const { sim, collisions, strikes } = runChecked(scenario, 900);
+      expect(collisions).toBe(0);
+      expect(strikes).toBe(0);
+      const m = sim.getMetrics();
+      expect(m.completed).toBeGreaterThan(100);
+      expect(m.diverted).toBe(0);
+      expect(m.gridlockSeen).toBe(false);
+    }, 20000);
+  }
+
+  it('sends U-turns round the ring, and diverts them where there is no roundabout', () => {
+    const s = withUTurns(200, { vehPerHourPerLeg: 200 });
+    const sim = new Simulation(s);
+    let leaving = 0;
+    for (let i = 0; i < 120; i++) {
+      sim.run(5);
+      // Back out on the leg they came in on.
+      leaving += sim.vehicles.filter((v) => v.from === v.to && v.seg === 2 && sim.network.lanes[v.outLane]!.leg === v.from).length;
+    }
+    expect(leaving).toBeGreaterThan(0);
+    expect(sim.counts().diverted).toBe(0);
+    const next = structuredClone(sim.scenario);
+    next.control = twoPhaseSignals(25);
+    sim.applyScenario(next);
+    sim.run(600);
+    const c = sim.counts();
+    expect(c.diverted).toBeGreaterThan(0);
+    expect(c.arrived).toBe(c.exited + c.onMap + c.backlog + c.diverted + c.removed);
+  }, 20000);
+
   it('circulates counter-clockwise in right-hand traffic and clockwise in left-hand', () => {
     for (const [driveSide, sign] of [['right', 1], ['left', -1]] as const) {
       const sim = new Simulation(ring({ vehPerHourPerLeg: 300, driveSide }));

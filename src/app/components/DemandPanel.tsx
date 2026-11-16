@@ -29,6 +29,8 @@ export function DemandPanel() {
   const value = (from: string, to: string) => demand.vehicles.find((d) => d.from === from && d.to === to)?.vehPerHour ?? 0;
   const total = demand.vehicles.reduce((s, d) => s + d.vehPerHour, 0);
   const banned = (from: string, to: string) => legs.find((l) => l.id === from)?.banned?.includes(to) ?? false;
+  // U-turns need a roundabout to go round. Without one, any U-turn trips divert elsewhere.
+  const roundabout = scenario.control.type === 'roundabout';
 
   return (
     <section className="panel">
@@ -96,24 +98,41 @@ export function DemandPanel() {
               <th>
                 <Badge i={i} id={from.id} />
               </th>
-              {legs.map((to) =>
-                to.id === from.id ? (
-                  <td key={to.id} className="diag" />
-                ) : (
-                  <td key={to.id} className={banned(from.id, to.id) ? 'banned' : ''} title={banned(from.id, to.id) ? t('Turn banned: these trips divert elsewhere', 'Dönüş yasak: bu yolculuklar başka yoldan gider') : undefined}>
+              {legs.map((to) => {
+                const uTurn = to.id === from.id;
+                if (uTurn && !roundabout && value(from.id, to.id) === 0) return <td key={to.id} className="diag" title={t('U-turns need a roundabout', 'U dönüşü için dönel kavşak gerekir')} />;
+                const blocked = uTurn && !roundabout;
+                return (
+                  <td
+                    key={to.id}
+                    className={blocked || banned(from.id, to.id) ? 'banned' : uTurn ? 'uturn' : ''}
+                    title={
+                      blocked
+                        ? t('No U-turns without a roundabout: these trips divert elsewhere', 'Dönel kavşak olmadan U dönüşü yok: bu yolculuklar başka yoldan gider')
+                        : banned(from.id, to.id)
+                          ? t('Turn banned: these trips divert elsewhere', 'Dönüş yasak: bu yolculuklar başka yoldan gider')
+                          : uTurn
+                            ? t('U-turns: all the way round the roundabout and back', 'U dönüşü: dönel kavşağın etrafını dolaşıp geri dönüş')
+                            : undefined
+                    }
+                  >
                     <input
                       type="number"
                       min={0}
                       step={10}
-                      readOnly={!rules.demand}
-                      aria-label={t(`Vehicles per hour from ${from.id} to ${to.id}`, `${from.id} yolundan ${to.id} yoluna saatte araç`)}
+                      readOnly={!rules.demand || blocked}
+                      aria-label={
+                        uTurn
+                          ? t(`Vehicles per hour making a U-turn on ${from.id}`, `${from.id} yolunda saatte U dönüşü yapan araç`)
+                          : t(`Vehicles per hour from ${from.id} to ${to.id}`, `${from.id} yolundan ${to.id} yoluna saatte araç`)
+                      }
                       value={value(from.id, to.id)}
                       onChange={(e) => setVeh(from.id, to.id, Math.max(0, Number(e.target.value) || 0))}
                     />
                   </td>
-                ),
-              )}
-              <td className="sum num">{legs.reduce((s, to) => s + (to.id === from.id ? 0 : value(from.id, to.id)), 0)}</td>
+                );
+              })}
+              <td className="sum num">{legs.reduce((s, to) => s + value(from.id, to.id), 0)}</td>
             </tr>
           ))}
         </tbody>
