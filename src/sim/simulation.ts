@@ -94,6 +94,8 @@ const PED_CLEARANCE = 3.0;
 // Lane changing (MOBIL: Kesting, Treiber & Helbing 2007).
 /** Seconds a sideways move takes. */
 const LC_DURATION = 3;
+/** Steepest a vehicle angles across while changing lane (radians, about 17°). */
+const MAX_LC_ANGLE = 0.3;
 /** Minimum seconds between two lane changes by the same driver. */
 const LC_COOLDOWN = 4;
 /** Acceleration advantage, m/s², a driver needs before changing lanes by choice. */
@@ -405,7 +407,13 @@ export class Simulation {
       const lateralSpeed = (6 * t * (1 - t)) / LC_DURATION;
       const hx = d.x * Math.max(veh.v, 1) + (to.x - from.x) * lateralSpeed;
       const hy = d.y * Math.max(veh.v, 1) + (to.y - from.y) * lateralSpeed;
-      return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, heading: Math.atan2(hy, hx) };
+      // Creeping sideways in a queue, a vehicle angles only slightly across, however slowly it moves:
+      // a long one turned steeply would sweep into the next lane.
+      const lane = Math.atan2(d.y, d.x);
+      let turn = Math.atan2(hy, hx) - lane;
+      turn = Math.atan2(Math.sin(turn), Math.cos(turn));
+      const heading = lane + Math.max(-MAX_LC_ANGLE, Math.min(MAX_LC_ANGLE, turn));
+      return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, heading };
     }
     const path = this.pathOf(veh);
     const sc = veh.s - veh.length / 2;
@@ -824,6 +832,15 @@ export class Simulation {
           hold = Math.min(hold ?? Infinity, c.s);
         }
       }
+      // Under signals, waiting there must not leave us parked across a stream we give way to (a turner
+      // that pulled forward and then found a merge blocked): if we'd stand in it, wait before it instead.
+      if (hold !== null && this.clock !== null) {
+        for (const c of [...conn.conflicts].sort((p, q) => q.s - p.s)) {
+          if (!c.yields || c.s >= hold || c.sEnd <= hold - veh.length || c.s - 1 - sOnConn < stoppingDistance(veh.v, STOP_DECEL)) continue;
+          obstacle(c.s - 1 - sOnConn, 0);
+          hold = c.s;
+        }
+      }
       veh.holdAt = hold;
       for (const x of conn.crosswalkCrossings) {
         const ahead = x.s - net.crosswalks[x.crosswalk]!.width / 2 - 1 - sOnConn;
@@ -929,11 +946,13 @@ export class Simulation {
         continue;
       }
       if (!this.trafficConflicts(veh, c, arrive, clear, true)) continue;
-      // Under signals, a turner may pull forward and wait inside the junction just before the crossing,
-      // so it can clear when the opposing flow stops at amber. One waiting vehicle per connector.
-      veh.holdAt = c.s;
-      const pullForward =
-        this.clock !== null && signal === 'green' && c.kind === 'cross' && c.s >= 6 && this.connVehicles[conn.idx]!.length === 0;
+      // Under signals, a turner may pull forward and wait inside the junction, short of the first
+      // stream it gives way to, so it can clear when the opposing flow stops at amber. That holds
+      // whether this conflict is that crossing or a merge beyond it. One waiting vehicle per connector,
+      // and only where it fits: its rear clear of the stop line, so the lane behind it can move.
+      const waitAt = ordered.find((w) => w.yields && w.kind === 'cross' && w.s >= veh.length && w.s <= c.s);
+      veh.holdAt = waitAt?.s ?? c.s;
+      const pullForward = this.clock !== null && signal === 'green' && !!waitAt && this.connVehicles[conn.idx]!.length === 0;
       if (!pullForward) return false;
       break;
     }
@@ -986,10 +1005,17 @@ export class Simulation {
     for (const x of this.connVehicles[c.other]!) {
       // A driver waiting inside the box for a gap is waiting for us, not the other way round.
       if (!yielding && x.v < QUEUED_SPEED) continue;
+      // Giving way, a driver stopped in the box short of the shared stretch is no threat either if they
+      // are waiting there on purpose, or stuck behind someone stopped ahead of them (perhaps a turner
+      // waiting on us). Waiting for them could lock the junction. If they move off, they count again.
+      if (yielding && x.v < QUEUED_SPEED && c.sOther - x.s > 2 && ((x.holdAt !== null && x.holdAt <= c.sOther) || this.behindStopped(x))) continue;
       if (holdsBefore(x)) continue;
       if (check(x, c.sOther - x.s, other.speedLimit)) return true;
     }
     for (const x of this.laneVehicles[other.inLane]!) {
+      // Queued behind someone stopped in the box (a turner waiting, maybe for us): neither they nor
+      // anyone behind them is coming yet.
+      if (yielding && x.v < QUEUED_SPEED && this.blockedInBox(x)) break;
       const toLine = otherIn.path.length - x.s;
       const refused = !x.committed && toLine < decisionDistance(x.v);
       if (x.connector === c.other) {
@@ -1003,6 +1029,27 @@ export class Simulation {
       }
       // Everyone queued behind a driver who is stopping at the line is stuck behind them too.
       if (refused) break;
+    }
+    return false;
+  }
+
+  /** Whether a vehicle in the box is right behind a stopped vehicle that shares its path there. */
+  private behindStopped(x: Vehicle): boolean {
+    const conn = this.network.connectors[x.connector]!;
+    for (const y of this.connVehicles[conn.idx]!) if (y !== x && y.s > x.s && y.v < QUEUED_SPEED) return true;
+    for (const sib of conn.siblings) {
+      for (const y of this.connVehicles[sib.other]!) if (y.s > x.s && y.v < QUEUED_SPEED && y.s - y.length < sib.until) return true;
+    }
+    return false;
+  }
+
+  /** Whether a vehicle still on its approach is held up by a stopped vehicle from its lane, inside the junction ahead of it. */
+  private blockedInBox(x: Vehicle): boolean {
+    const conn = this.network.connectors[x.connector];
+    if (!conn) return false;
+    for (const y of this.connVehicles[conn.idx]!) if (y.v < QUEUED_SPEED) return true;
+    for (const sib of conn.siblings) {
+      for (const y of this.connVehicles[sib.other]!) if (y.v < QUEUED_SPEED && y.s - y.length < sib.until) return true;
     }
     return false;
   }

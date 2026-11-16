@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { overlappingVehicles } from '../src/sim/safety';
 import type { ControlSpec } from '../src/core/types';
 import { SignalController } from '../src/sim/signals';
 import { Simulation } from '../src/sim/simulation';
@@ -64,6 +65,34 @@ describe('green time in traffic', () => {
     const long = served(60);
     expect(long).toBeGreaterThan(short * 1.2);
   });
+
+  it('on wider roads, longer greens (fewer stops and starts) shorten the queues', () => {
+    const queueAt = (green: number) => {
+      const sim = new Simulation(crossroad({ control: twoPhaseSignals(green), vehPerHourPerLeg: 800, lanes: 2 }));
+      sim.run(300);
+      sim.resetMetrics();
+      let total = 0;
+      for (let t = 0; t < 1200; t += 10) {
+        sim.run(10);
+        total += sim.getMetrics().legs.reduce((a, l) => a + l.queue, 0);
+      }
+      return total / 120;
+    };
+    expect(queueAt(40)).toBeLessThan(queueAt(15) * 0.7);
+  }, 30000);
+
+  it('opposite left turners waiting in the box never lock the junction', () => {
+    // One shared lane per road: each left turner waits in the box for the other side's right turner,
+    // which is queued behind the other left turner. That used to stall the junction until it gridlocked.
+    const sim = new Simulation(crossroad({ control: twoPhaseSignals(40), vehPerHourPerLeg: 360 }));
+    sim.run(300);
+    sim.resetMetrics();
+    sim.run(1800);
+    const m = sim.getMetrics();
+    expect(m.gridlock).toBe(false);
+    expect(m.throughputPerHour).toBeGreaterThan(1250);
+    expect(overlappingVehicles(sim)).toEqual([]);
+  }, 30000);
 
   it('cars that arrive on green with no queue keep their speed through the junction', () => {
     const sim = new Simulation(throughOnly(60, 200));
