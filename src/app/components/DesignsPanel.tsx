@@ -1,5 +1,4 @@
-import { useRef, useState } from 'react';
-import { ImportDialog } from './ImportDialog';
+import { useEffect, useRef, useState } from 'react';
 import { deleteDesign, designFile, listDesigns, parseScenario, saveDesign, type SavedDesign } from '../../scenarios/storage';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
@@ -8,17 +7,20 @@ import { useApp } from '../store';
 export function DesignsPanel() {
   const rules = useRules();
   const scenario = useApp((s) => s.scenario);
-  const loadDesign = useApp((s) => s.loadDesign);
+  const savedDesign = useApp((s) => s.savedDesign);
+  const { loadDesign, askReplace, markSaved } = useApp.getState();
   const [designs, setDesigns] = useState<SavedDesign[]>(() => listDesigns());
   const [name, setName] = useState('My junction');
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const [importing, setImporting] = useState(false);
+  // A design saved from the "unsaved changes" question shows up here too.
+  useEffect(() => setDesigns(listDesigns()), [savedDesign]);
   if (rules.inLevel) return null;
 
   const save = () => {
     const n = name.trim() || 'My junction';
     if (saveDesign(n, scenario)) {
+      markSaved();
       setDesigns(listDesigns());
       setMessage({ text: `Saved “${n}”.` });
     } else setMessage({ text: "This browser won't store designs (private window?). Use Export instead.", bad: true });
@@ -38,9 +40,12 @@ export function DesignsPanel() {
     try {
       const parsed = parseScenario(JSON.parse(await file.text()));
       if (!parsed.scenario) return setMessage({ text: parsed.error ?? 'Could not read that file.', bad: true });
-      loadDesign(parsed.scenario);
-      if (parsed.name) setName(parsed.name);
-      setMessage({ text: `Opened “${parsed.name ?? file.name}”.` });
+      const n = parsed.name ?? file.name;
+      askReplace(`Open “${n}”`, () => {
+        loadDesign(parsed.scenario!);
+        if (parsed.name) setName(parsed.name);
+        setMessage({ text: `Opened “${n}”.` });
+      });
     } catch {
       setMessage({ text: 'That file is not valid JSON.', bad: true });
     }
@@ -52,10 +57,6 @@ export function DesignsPanel() {
         <h2>My designs</h2>
         <span className="hint">Saved in this browser</span>
       </header>
-      <button className="btn real-junction" onClick={() => setImporting(true)}>
-        🌍 Import a real junction from the map
-      </button>
-      {importing && <ImportDialog onClose={() => setImporting(false)} />}
       <div className="row gap">
         <input className="text" aria-label="Design name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
         <button className="btn primary" onClick={save}>
@@ -71,7 +72,7 @@ export function DesignsPanel() {
               <span className="hint">
                 {d.scenario.legs.length} roads · {new Date(d.savedAt).toLocaleDateString()}
               </span>
-              <button className="link" onClick={() => loadDesign(d.scenario)}>
+              <button className="link" onClick={() => askReplace(`Open “${d.name}”`, () => loadDesign(d.scenario))}>
                 Open
               </button>
               <button

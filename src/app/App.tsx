@@ -9,6 +9,8 @@ import { LegLabels } from './components/LegLabels';
 import { LevelPanel } from './components/LevelPanel';
 import { LevelSelect } from './components/LevelSelect';
 import { MetricsPanel } from './components/MetricsPanel';
+import { ReplaceDialog } from './components/ReplaceDialog';
+import { StartPanel } from './components/StartPanel';
 import { ShapeEditor } from './components/ShapeEditor';
 import { SignalPlanPanel } from './components/SignalPlanPanel';
 import { TopBar } from './components/TopBar';
@@ -38,15 +40,17 @@ export function App() {
       </main>
       <aside className="sidebar">
         <LevelPanel />
-        <MetricsPanel onReset={resetMetrics} />
-        <FairTestPanel />
+        <StartPanel />
         <LegInspector />
         <JunctionPanel />
         <SignalPlanPanel />
         <DemandPanel />
+        <MetricsPanel onReset={resetMetrics} />
+        <FairTestPanel />
         <DesignsPanel />
       </aside>
       <LevelSelect />
+      <ReplaceDialog />
     </div>
   );
 }

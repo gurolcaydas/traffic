@@ -10,6 +10,7 @@ export function LevelSelect() {
   const startLevel = useApp((s) => s.startLevel);
   const playSandbox = useApp((s) => s.playSandbox);
   const setShowLevels = useApp((s) => s.setShowLevels);
+  const askReplace = useApp((s) => s.askReplace);
   useEffect(() => {
     if (!show) return;
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setShowLevels(false);
@@ -33,7 +34,7 @@ export function LevelSelect() {
             const stars = progress[level.id] ?? 0;
             const locked = i > 0 && !(progress[LEVELS[i - 1]!.id] ?? 0);
             return (
-              <button key={level.id} className={`level-card ${locked ? 'locked' : ''}`} disabled={locked} onClick={() => startLevel(level.id)}>
+              <button key={level.id} className={`level-card ${locked ? 'locked' : ''}`} disabled={locked} onClick={() => askReplace(`Play “${level.title}”`, () => startLevel(level.id))}>
                 <span className="level-num num">{i + 1}</span>
                 <span className="level-title">{level.title}</span>
                 <span className="level-brief">{locked ? 'Solve the previous level to unlock.' : level.brief}</span>

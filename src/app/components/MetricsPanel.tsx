@@ -2,7 +2,7 @@ import type { MetricsSnapshot } from '../../sim/metrics';
 import { legColor } from '../../render/theme';
 import { useApp } from '../store';
 
-const LOS_TEXT: Record<string, string> = {
+export const LOS_TEXT: Record<string, string> = {
   A: 'Free flow',
   B: 'Smooth',
   C: 'Steady',
@@ -12,7 +12,7 @@ const LOS_TEXT: Record<string, string> = {
 };
 
 /** Metrics need this much simulated time before they mean anything. */
-const SETTLE = 30;
+export const SETTLE = 30;
 
 const fmt = (s: number) => (s < 100 ? s.toFixed(1) : Math.round(s).toString());
 
@@ -23,7 +23,7 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
   const maxQueue = Math.max(20, ...(m?.legs.map((l) => l.queue) ?? [0]));
 
   return (
-    <section className="panel">
+    <section className="panel" id="flow">
       <header className="panel-head">
         <h2>How it's flowing</h2>
         <button className="link" onClick={onReset} title="Start measuring again from now">

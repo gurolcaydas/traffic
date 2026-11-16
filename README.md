@@ -11,6 +11,8 @@ lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
 - Banned turns count as a 90 s detour, so bans are a trade-off, not a free win.
 - Best stars are saved in your browser, and each level unlocks when the previous one has a star.
 
+**The sidebar** follows the order you work in: **Start** (shape template, drive side, or a real junction from the map), **Junction** and **Signal plan** (design), **Traffic**, then the results (**How it's flowing**, **Fair test**) and **My designs**. Anything that replaces the design asks first if it has unsaved changes, and offers to save it. The A–F badge in the top bar keeps the level of service in sight; click it for details.
+
 **Phase 5: real junctions.** In the sandbox, **Import a real junction from the map** finds a place by name (Nominatim), coordinates or an openstreetmap.org link, reads the roads around it from OpenStreetMap (Overpass, with two fallback servers), and shows a preview before opening it:
 
 - road names, types, lane counts and one-way streets; the two halves of a divided road become one leg

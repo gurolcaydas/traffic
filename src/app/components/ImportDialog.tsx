@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { fetchRoads, parsePlace, searchPlaces, type Place } from '../../osm/api';
 import { osmToScenario, type ImportResult } from '../../osm/convert';
 import { legColor } from '../../render/theme';
-import { useApp } from '../store';
+import type { Scenario } from '../../core/types';
 
 type Step =
   | { kind: 'search' }
@@ -15,8 +15,7 @@ type Step =
 const CONTROL_TEXT = { priority: 'Priority / give way', signals: 'Traffic lights', roundabout: 'Roundabout' } as const;
 
 /** Find a real junction on OpenStreetMap and open it in the sandbox. */
-export function ImportDialog({ onClose }: { onClose: () => void }) {
-  const loadDesign = useApp((s) => s.loadDesign);
+export function ImportDialog({ onClose, onOpen }: { onClose: () => void; onOpen: (scenario: Scenario, label: string) => void }) {
   const [query, setQuery] = useState('');
   const [step, setStep] = useState<Step>({ kind: 'search' });
   const abort = useRef<AbortController | null>(null);
@@ -147,8 +146,8 @@ export function ImportDialog({ onClose }: { onClose: () => void }) {
                 <button
                   className="btn primary"
                   onClick={() => {
-                    loadDesign({ ...step.result.scenario, source: { ...step.result.scenario.source!, label: step.place.label } });
                     onClose();
+                    onOpen({ ...step.result.scenario, source: { ...step.result.scenario.source!, label: step.place.label } }, step.result.scenario.name);
                   }}
                 >
                   Open in the sandbox

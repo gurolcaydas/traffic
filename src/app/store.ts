@@ -52,6 +52,10 @@ interface AppState {
   scenario: Scenario;
   /** Designs the fair test can compare against: as first built, just before the latest edit, or pinned. */
   originalDesign: Scenario;
+  /** The design as last saved, so leaving it unchanged since needs no warning. */
+  savedDesign: Scenario | null;
+  /** Something that would replace the sandbox design, waiting for the player to confirm. */
+  pendingReplace: { what: string; run: () => void } | null;
   designBeforeLastEdit: Scenario | null;
   pinnedDesign: { scenario: Scenario; label: string } | null;
   /** Bumped for a brand-new junction: the traffic restarts. */
@@ -73,6 +77,10 @@ interface AppState {
   theme: ThemeChoice;
 
   newJunction: (patch: Partial<Setup>) => void;
+  /** Run `run` (which replaces the design) now, or first ask if the sandbox design has unsaved changes. */
+  askReplace: (what: string, run: () => void) => void;
+  closeReplace: () => void;
+  markSaved: () => void;
   startLevel: (id: string) => void;
   playSandbox: () => void;
   /** Open a saved or imported design in the sandbox (the traffic restarts). */
@@ -109,6 +117,8 @@ export const useApp = create<AppState>((set, get) => ({
   editShape: false,
   scenario: initial,
   originalDesign: initial,
+  savedDesign: null,
+  pendingReplace: null,
   designBeforeLastEdit: null,
   pinnedDesign: null,
   layoutVersion: 0,
@@ -167,6 +177,14 @@ export const useApp = create<AppState>((set, get) => ({
       timeOfDay: scenario.demand.pattern?.startHour ?? null,
     });
   },
+  askReplace: (what, run) => {
+    const s = get();
+    const unsaved = s.mode.kind === 'sandbox' && s.scenario !== s.originalDesign && s.scenario !== s.savedDesign;
+    if (unsaved) set({ pendingReplace: { what, run } });
+    else run();
+  },
+  closeReplace: () => set({ pendingReplace: null }),
+  markSaved: () => set({ savedDesign: get().scenario }),
   setShowLevels: (showLevels) => set({ showLevels }),
   setEditShape: (editShape) => set({ editShape }),
   recordResult: (result) => {

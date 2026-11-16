@@ -1,5 +1,6 @@
 import { formatClock } from '../../scenarios/patterns';
 import { useApp, type ThemeChoice } from '../store';
+import { LOS_TEXT, SETTLE } from './MetricsPanel';
 import { Segmented } from './Segmented';
 
 // Close watching, normal viewing, fast-forward, and a whole day in a few minutes.
@@ -19,6 +20,7 @@ export function TopBar({ onFit }: { onFit: () => void }) {
   const timeOfDay = useApp((s) => s.timeOfDay);
   const theme = useApp((s) => s.theme);
   const mode = useApp((s) => s.mode);
+  const metrics = useApp((s) => s.metrics);
   const { setPlaying, setSpeed, restart, setTheme, setShowLevels } = useApp.getState();
 
   return (
@@ -54,6 +56,16 @@ export function TopBar({ onFit }: { onFit: () => void }) {
             </span>
           )}
         </span>
+        {metrics && metrics.window >= SETTLE && (
+          <button
+            className="flow-badge"
+            title="How it's flowing: show details"
+            onClick={() => document.getElementById('flow')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+          >
+            <span className={`los los-${metrics.los}`}>{metrics.los}</span>
+            {metrics.gridlock ? 'Gridlock' : LOS_TEXT[metrics.los]}
+          </button>
+        )}
       </div>
 
       <Segmented<ThemeChoice>

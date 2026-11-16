@@ -1,4 +1,3 @@
-import { SHAPES, type Shape } from '../../scenarios/setup';
 import {
   controlChoice,
   crossingOf,
@@ -16,7 +15,7 @@ import {
 import { useRef } from 'react';
 import type { Scenario } from '../../core/types';
 import { useRules } from '../levelRules';
-import { currentSetup, useApp } from '../store';
+import { useApp } from '../store';
 import { Segmented } from './Segmented';
 
 const CONTROL_LABEL = { right: 'yield to right', major: 'major road', signals: 'signals', roundabout: 'roundabout' } as const;
@@ -24,8 +23,6 @@ const CONTROL_LABEL = { right: 'yield to right', major: 'major road', signals: '
 export function JunctionPanel() {
   const scenario = useApp((s) => s.scenario);
   const edit = useApp((s) => s.edit);
-  const newJunction = useApp((s) => s.newJunction);
-  const setup = currentSetup();
   const rules = useRules();
   const editShape = useApp((s) => s.editShape);
   const setEditShape = useApp((s) => s.setEditShape);
@@ -147,33 +144,6 @@ export function JunctionPanel() {
 
       <p className="hint tip">Click a leg on the map to change its lanes, crossing or allowed turns.</p>
 
-      {!rules.inLevel && (
-      <details className="start-over">
-        <summary>Start over with a new junction</summary>
-        <div className="field">
-          <label>Shape</label>
-          <Segmented
-            label="Shape"
-            value={setup.shape}
-            options={(Object.keys(SHAPES) as Shape[]).map((k) => ({ value: k, label: SHAPES[k].label }))}
-            onChange={(shape) => newJunction({ shape })}
-          />
-        </div>
-        <div className="field">
-          <label>Traffic drives on the</label>
-          <Segmented
-            label="Drive side"
-            value={scenario.driveSide}
-            options={[
-              { value: 'right', label: 'Right' },
-              { value: 'left', label: 'Left' },
-            ]}
-            onChange={(driveSide) => newJunction({ driveSide })}
-          />
-        </div>
-        <p className="hint">These restart the traffic and clear your changes.</p>
-      </details>
-      )}
     </section>
   );
 }
