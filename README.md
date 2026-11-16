@@ -23,7 +23,8 @@ Map data © OpenStreetMap contributors, ODbL. Nothing is sent until you press Fi
 
 **Phase 4: your own junctions.** In the sandbox:
 
-- **Edit shape** lets you drag a road's handle to turn it, press **+** to add a road in any gap wide enough, or **×** to remove one. Junctions have 2–6 roads, kept at least 30° apart, and every change applies under running traffic.
+- **Edit shape** lets you drag a road's handle to turn it, press **+** to add a road in any gap wide enough, **×** to remove one, or **🚶** on a road to step its crossing through none → zebra → with lights. Junctions have 2–6 roads, kept at least 30° apart, and every change applies under running traffic.
+- **Pedestrians** and **Traffic lights** switches turn either on or off in one click, and switching back restores what was there (a zebra becomes a crossing with lights when the lights go on, and back).
 - **Start over** offers six templates: crossroad, skewed, T, Y, 5-way, 6-way.
 - **My designs** saves designs in your browser, and can export one to a `.traffic.json` file or import it again on another computer.
 

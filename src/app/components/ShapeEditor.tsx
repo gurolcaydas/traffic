@@ -2,14 +2,20 @@ import { useEffect, useRef, useState } from 'react';
 import type { Network } from '../../network/network';
 import type { Camera, Renderer } from '../../render/Renderer';
 import { legColor } from '../../render/theme';
+import { crossingOf, setCrossing, type CrossingChoice } from '../../scenarios/edit';
 import { MIN_GAP, addLeg, canAddLeg, canRemoveLeg, nearestFit, removeLeg, rotateLeg } from '../../scenarios/shape';
 import { useApp } from '../store';
 
 const rad = (deg: number) => (deg * Math.PI) / 180;
 
+/** Clicking a road's crossing button steps through these. */
+const NEXT_CROSSING: Record<CrossingChoice, CrossingChoice> = { none: 'zebra', zebra: 'signal', signal: 'none' };
+const CROSSING_TEXT: Record<CrossingChoice, string> = { none: 'no crossing', zebra: 'zebra crossing', signal: 'crossing with lights' };
+
 /**
  * On-map controls for changing the junction's shape: drag a road's handle to turn it, × to remove
- * it, + in a wide enough gap to add one. Every change applies live, like any other edit.
+ * it, + in a wide enough gap to add one, and 🚶 on a road to add, change or remove its crossing.
+ * Every change applies live, like any other edit.
  */
 export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; network: Network | null }) {
   const [cam, setCam] = useState<Camera | null>(null);
@@ -100,6 +106,28 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
           </div>
         );
       })}
+      {!drag &&
+        scenario.legs.map((leg) => {
+          const g = network.legs.get(leg.id);
+          if (!g) return null;
+          // On the crossing itself, or where one would go.
+          const at = g.crosswalkCenter ?? g.boxEdge + 3;
+          const p = { x: cam.x + g.dir.x * at * cam.scale, y: cam.y - g.dir.y * at * cam.scale };
+          const now = crossingOf(scenario, leg.id);
+          const next = NEXT_CROSSING[now];
+          return (
+            <button
+              key={`x${leg.id}`}
+              className={`shape-crossing ${now}`}
+              style={{ left: p.x, top: p.y }}
+              aria-label={`Road ${leg.id}: ${CROSSING_TEXT[now]}. Click for ${CROSSING_TEXT[next]}`}
+              title={`${CROSSING_TEXT[now]} · click for ${CROSSING_TEXT[next]}`}
+              onClick={() => edit(`Road ${leg.id}: ${CROSSING_TEXT[next]}`, (d) => setCrossing(d, leg.id, next))}
+            >
+              🚶{now === 'signal' && <span className="mini">●</span>}
+            </button>
+          );
+        })}
       {!drag &&
         slots.map((angle) => {
           const p = toScreen(angle, reach * 0.8);

@@ -6,12 +6,15 @@ import {
   hasFlyover,
   setAllCrossings,
   setAllLanes,
+  setCrossing,
   setControl,
   sideRoadCandidates,
   toggleFlyover,
   toggleSideRoad,
   type CrossingChoice,
 } from '../../scenarios/edit';
+import { useRef } from 'react';
+import type { Scenario } from '../../core/types';
 import { useRules } from '../levelRules';
 import { currentSetup, useApp } from '../store';
 import { Segmented } from './Segmented';
@@ -48,9 +51,11 @@ export function JunctionPanel() {
           <button className={`btn ${editShape ? 'primary' : ''}`} aria-pressed={editShape} onClick={() => setEditShape(!editShape)}>
             ✎ {editShape ? 'Done editing shape' : 'Edit shape'}
           </button>
-          {editShape && <span className="hint">Drag a ⟲ handle to turn a road, + to add one, × to remove one.</span>}
+          {editShape && <span className="hint">Drag a ⟲ handle to turn a road, + to add one, × to remove one. Click 🚶 on a road to add, change or remove its crossing.</span>}
         </div>
       )}
+
+      <QuickSwitches />
 
       <div className="field">
         <label>Control</label>
@@ -170,5 +175,74 @@ export function JunctionPanel() {
       </details>
       )}
     </section>
+  );
+}
+
+/**
+ * Two on/off switches for the things people most often try first: pedestrians and traffic lights.
+ * Switching off remembers what was there, so switching back on restores it.
+ */
+function QuickSwitches() {
+  const scenario = useApp((s) => s.scenario);
+  const edit = useApp((s) => s.edit);
+  const rules = useRules();
+  const lastCrossings = useRef<Scenario['crosswalks']>([]);
+  const lastControl = useRef<Exclude<ReturnType<typeof controlChoice>, 'signals'>>('major');
+
+  const walkers = scenario.crosswalks.length > 0;
+  const lights = scenario.control.type === 'signals';
+  const otherControls = rules.controls.filter((c) => c !== 'signals');
+  const canLights = rules.controls.includes('signals') && otherControls.length > 0;
+  if (rules.inLevel && !canLights) return null;
+
+  const togglePeople = () => {
+    if (walkers) {
+      lastCrossings.current = scenario.crosswalks;
+      edit('Pedestrians off', (d) => setAllCrossings(d, 'none'));
+      return;
+    }
+    // Bring back the crossings that were there, or a full set to suit the control.
+    const legs = new Set(scenario.legs.map((l) => l.id));
+    const before = lastCrossings.current.filter((c) => legs.has(c.leg));
+    edit('Pedestrians on', (d) => {
+      if (!before.length) return setAllCrossings(d, d.control.type === 'signals' ? 'signal' : 'zebra');
+      for (const c of before) setCrossing(d, c.leg, c.type);
+    });
+  };
+
+  const toggleLights = () => {
+    if (lights) {
+      const back = otherControls.includes(lastControl.current) ? lastControl.current : otherControls[0]!;
+      edit('Traffic lights off', (d) => {
+        setControl(d, back);
+        // Crossings with lights need lights: they become zebras.
+        for (const c of d.crosswalks) if (c.type === 'signal') setCrossing(d, c.leg, 'zebra');
+      });
+      return;
+    }
+    const was = controlChoice(scenario);
+    if (was !== 'signals') lastControl.current = was;
+    edit('Traffic lights on', (d) => {
+      setControl(d, 'signals');
+      for (const c of d.crosswalks) if (c.type === 'zebra') setCrossing(d, c.leg, 'signal');
+    });
+  };
+
+  return (
+    <div className="quick-switches">
+      {!rules.inLevel && <Switch label="Pedestrians" on={walkers} onChange={togglePeople} />}
+      {canLights && <Switch label="Traffic lights" on={lights} onChange={toggleLights} />}
+    </div>
+  );
+}
+
+function Switch({ label, on, onChange }: { label: string; on: boolean; onChange: () => void }) {
+  return (
+    <button className={`switch ${on ? 'on' : ''}`} role="switch" aria-checked={on} onClick={onChange}>
+      <span className="track">
+        <span className="thumb" />
+      </span>
+      {label}
+    </button>
   );
 }
