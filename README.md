@@ -1,134 +1,110 @@
-# traffic
+# Traffic
 
-A game-like traffic puzzle: you get a junction with a traffic jam and fix it by adding signals,
-lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
+A traffic junction puzzle that runs in the browser. You get a junction that's jammed, and you fix it with traffic lights, extra lanes, a roundabout, a flyover or pedestrian crossings while the cars keep driving. Every change applies to the running traffic, so you see right away whether it helped.
 
-**Status: Phase 3.** There are six puzzle levels plus the sandbox. Open **★ Levels** to play them.
+Underneath is a real traffic simulation: car-following, gap acceptance, signal plans, lane changing and pedestrians. It's calibrated against standard traffic-engineering figures, so the junctions behave the way real ones do.
 
-- Each level gives you a jammed junction, a budget and some limits: shops that block widening, a building on a corner, crossings that must stay.
-- **Submit design** runs your design four times on the level's fixed traffic and awards up to three stars for average delay. Any gridlock fails.
-- Additions cost money: lanes 40, signals 120, roundabout 300, side road 150, flyover 600, crossings 20 or 60, turn bans 5, priority signs 10. Removing things and retiming lights is free.
-- Banned turns count as a 90 s detour, so bans are a trade-off, not a free win.
-- Best stars are saved in your browser, and each level unlocks when the previous one has a star.
+![A signalised crossroad with two lanes each way and zebra crossings, with the design sidebar on the right](docs/screenshot.png)
 
-**The sidebar** follows the order you work in: **Start** (shape template, drive side, or a real junction from the map), **Junction** and **Signal plan** (design), **Traffic**, then the results (**How it's flowing**, **Fair test**) and **My designs**. Anything that replaces the design asks first if it has unsaved changes, and offers to save it. The A–F badge in the top bar keeps the level of service in sight; click it for details.
+## Features
 
-**Phase 5: real junctions.** In the sandbox, **Import a real junction from the map** finds a place by name (Nominatim), coordinates or an openstreetmap.org link, reads the roads around it from OpenStreetMap (Overpass, with two fallback servers), and shows a preview before opening it:
+- **Six puzzle levels.** Each gives you a jammed junction, a budget and some limits: shops that block widening, a building on a corner, crossings that must stay. Your design is scored on average delay, from one to three stars.
+- **Sandbox.** Build any junction with 2 to 6 roads at any angle and 1 to 4 lanes each way. Choose the control: yield to the right, a major road, traffic lights or a roundabout.
+- **Live editing.** You can change the following without restarting the traffic:
+  - signal plans
+  - turn bans
+  - side roads (slip lanes)
+  - flyovers
+  - zebra or signalised crossings
+- **Real junctions.** Search a place by name, coordinates or an openstreetmap.org link. The roads around it are imported from OpenStreetMap, with:
+  - lane counts
+  - one-way streets
+  - traffic lights and roundabouts
+  - crossings
+  - which side people drive on
+- **Fair test.** Compares two designs on exactly the same random traffic over several runs, and gives every difference with a 95% confidence interval.
+- **Traffic through the day.** Choose commuter, school run, evening event or weekend. Each pattern varies the traffic hour by hour, and the busy direction can reverse during the day (into town in the morning, out in the evening). Results include the worst 15 minutes.
+- **Your designs.** Save designs in the browser, or export one to a `.traffic.json` file and import it elsewhere.
+- **Right- or left-hand traffic.** You can switch the whole junction to drive on the other side.
+- **English and Turkish.** The app follows the browser's language, and you can switch it from the top bar.
 
-- road names, types, lane counts and one-way streets; the two halves of a divided road become one leg
-- traffic lights, roundabouts, or priority for the main road; pedestrian crossings near the junction
-- the side of the road people drive on, from the location
-- traffic volumes are estimated from road types, so adjust them in the Traffic table
-- up to six roads (the most important ones), at most three lanes each way
+## How to play
 
-Map data © OpenStreetMap contributors, ODbL. Nothing is sent until you press Find.
+1. Open **★ Levels** and pick a level. The brief says what's wrong and what you can't change.
+2. Change the design in the sidebar. The A–F badge in the top bar shows how well traffic is flowing (level of service).
+3. Press **Submit design**. The design runs four times on the level's fixed traffic, which is the same for every player and every attempt.
+4. Lower average delay earns more stars. A design fails if it goes over budget, breaks one of the level's rules, or gridlocks (drivers block each other and the junction stops moving).
 
-**Phase 4: your own junctions.** In the sandbox:
+Each addition has a price:
 
-- **Edit shape** lets you drag a road's handle to turn it, press **+** to add a road in any gap wide enough, **×** to remove one, **−**/**+** to set its lanes in and out (up to 4 each way), or **🚶** on a road to step its crossing through none → zebra → with lights. Junctions have 2–6 roads, kept at least 30° apart, and every change applies under running traffic.
-- **Pedestrians** and **Traffic lights** switches turn either on or off in one click, and switching back restores what was there (a zebra becomes a crossing with lights when the lights go on, and back).
-- **Start over** offers six templates: crossroad, skewed, T, Y, 5-way, 6-way.
-- **My designs** saves designs in your browser, and can export one to a `.traffic.json` file or import it again on another computer.
-- **EN / TR** in the top bar switches the whole app between English and Turkish. The first visit follows the browser's language, and the choice is remembered.
+| Item | Cost |
+|---|---|
+| Lane | 40 |
+| Traffic lights | 120 |
+| Roundabout | 300 |
+| Side road | 150 |
+| Flyover | 600 |
+| Zebra / signalised crossing | 20 / 60 |
+| Turn ban | 5 |
+| Priority signs | 10 |
 
-**Earlier phases (2a and up):** There's a sandbox you can edit while the traffic runs:
+Removing things and retiming the lights are free. Each banned turn counts as a 90 s detour, so a ban has a cost in delay too.
 
-- signals and the full signal plan
-- lanes per leg
-- turn bans
-- slip lanes
-- pedestrian crossings
-- flyovers
+## Getting started
 
-A before/after card compares the design with how it was before your last change.
-
-The **Fair test** gives a reliable verdict. It runs the current design and a reference design (before the last change, the original, or a pinned design) on *exactly the same traffic*, several times with different random traffic. It then reports each difference with a 95% confidence interval.
-
-**Traffic through the day.** Choose a pattern:
-
-- commuter day
-- school run
-- evening event
-- weekend
-
-The demand table then counts as the peak hour, and the pattern scales it hour by hour. Commuter, school and event patterns are *tidal*: they send traffic towards a chosen leg (town centre, school or venue) at one time of day and away from it at another.
-
-The sidebar shows the day as a chart: click it to jump the clock. The metrics include the **worst 15 minutes**, and the fair test can cover the busiest 3 hours or the whole day.
-
-**Roundabouts (Phase 2b)** are a fourth control option, switchable live. They're one-lane roundabouts: entering traffic gives way to traffic already on the ring. Side roads and flyovers work with them too.
-
-## Commands
+You need Node.js 22 or later.
 
 ```bash
-npm run dev       # the sandbox app at http://localhost:5173
-npm run build
-npm test          # unit + simulation tests
-npm run typecheck
-npm run sim       # play the sample scenarios headless and print metrics (npm run sim -- 30 for 30 minutes)
+git clone https://github.com/gurolcaydas/traffic.git
+cd traffic
+npm install
+npm run dev
 ```
 
-## Layout
+Then open http://localhost:5173.
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Starts the app with hot reload |
+| `npm run build` | Typechecks, then builds into `dist/` |
+| `npm run preview` | Serves the built app |
+| `npm test` | Runs the unit and simulation tests (Vitest) |
+| `npm run typecheck` | Runs TypeScript with no output |
+| `npm run sim` | Runs sample junctions headless and prints their metrics. `npm run sim -- 30` runs 30 minutes |
+
+## How it works
+
+The simulation runs in a Web Worker at a fixed 0.1 s step and streams frames to a PixiJS renderer, which draws the vehicles in between frames. React and Zustand handle only the sidebar and controls.
+
+- **Driving.** Vehicles follow the car ahead using the Intelligent Driver Model. They change lanes using MOBIL: to gain speed, or to reach a lane for their turn.
+- **Right of way.** Wherever two paths through the junction cross, one side gives way. Drivers wait for a gap, commit, and don't enter the junction if a stuck car blocks their way.
+- **Calibration.** The figures roughly match published values:
+  - one lane at a green discharges about 1,900 vehicles/h
+  - signal delays follow Webster's formula
+  - a one-lane roundabout carries about 1,650 vehicles/h
+- **Fair comparisons.** Every traffic stream has its own seeded random generator. Two different designs run with the same seed therefore see exactly the same cars at the same moments.
+
+The full model is described in [docs/simulation.md](docs/simulation.md).
+
+## Project structure
 
 | Path | What |
 |---|---|
-| `src/core/types.ts` | **Scenario format**: the JSON that describes a junction, its demand (veh/h, ped/h) and control. Everything else derives from it. |
-| `src/core/geometry.ts`, `rng.ts` | Polylines with arc length, Bezier curves, intersections; seeded random generator. |
-| `src/network/` | Turns a Scenario into a drivable network: lanes, connectors (turn paths), conflict stretches with right of way, crosswalks. |
-| `src/sim/simulation.ts` | The engine: vehicles (IDM car-following), gap acceptance, signals, pedestrians. Fixed 0.1 s step. |
-| `src/sim/metrics.ts` | Queues, delay, throughput, Level of Service A–F, gridlock flag (what the game scores on). |
-| `src/sim/safety.ts` | Collision checks used by the tests. |
-| `src/network/roundabout.ts` | Roundabout geometry (ring size, tangent entry and exit curves, flared curbs) and the ring's rules. |
-| `src/game/` | Levels (`levels.ts`), what designs cost (`costs.ts`) and how they're scored (`score.ts`). |
-| `src/scenarios/shape.ts`, `storage.ts` | Adding, turning and removing roads (keeping the scenario consistent), and saving, exporting and importing designs. |
-| `src/osm/` | OpenStreetMap import: `api.ts` finds places and fetches roads, `convert.ts` turns the roads around a point into a Scenario. |
-| `src/scenarios/patterns.ts` | Time-of-day patterns, tidal flows, and the maths to look a factor up for any hour. |
-| `src/sim/evaluate.ts` | Headless test runs and paired statistics for the fair test. `src/app/eval.worker.ts` and `fairTest.ts` spread the runs over a pool of workers. |
-| `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |
-| `src/scenarios/templates.ts`, `setup.ts` | Parametric junctions, and the sandbox's choices (shape, lanes, control, crossings, drive side) turned into a Scenario, including an automatic signal plan. |
-| `src/app/` | React UI: the sidebar panels, the store (Zustand), and `sim.worker.ts`, which runs the simulation off the main thread and streams frames back. |
-| `src/render/` | PixiJS renderer: asphalt, curbs and markings drawn once, then signals, vehicles and pedestrians every frame, interpolated between simulation frames. |
+| `src/core/` | The scenario format, a JSON description of a junction, its traffic and its control. Also geometry, a seeded random generator and translations. |
+| `src/network/` | Turns a scenario into a drivable network: lanes, turn paths, conflicts, crosswalks and roundabout geometry |
+| `src/sim/` | The engine, metrics (delay, queues, level of service, gridlock), signal controller and headless evaluation |
+| `src/game/` | Levels, costs and scoring |
+| `src/scenarios/` | Templates, edits a player can make, shape editing, daily traffic patterns, and saving and loading |
+| `src/osm/` | OpenStreetMap import: place search, road fetch and conversion to a scenario |
+| `src/render/` | PixiJS renderer |
+| `src/app/` | React UI, the Zustand store, and the simulation and evaluation workers |
+| `tests/` | Vitest tests, including collision and path checks on the simulation |
+| `scripts/run-sim.ts` | Headless runner behind `npm run sim` |
 
-## How the simulation works
+## Built with
 
-- **Coordinates and units.** Metres and seconds. The origin is the junction centre, with y pointing up. `driveSide` mirrors everything, including which turn is "near" and which is "far".
-- **Vehicles.** Each vehicle follows a route: approach lane → connector through the junction → exit lane. It follows the car ahead using the Intelligent Driver Model.
-- **Conflicts.** For each pair of connectors, the stretch where their paths come closer than a car width is a conflict, and one side of it gives way.
-  - Under signals, through traffic beats near turns, which beat far turns.
-  - With priority control, major-road movements come first; remaining ties go to the vehicle on the near side.
-- **Entering the junction.** Near the stop line, a driver checks the signal, the room on the exit lane, conflicting traffic and pedestrians. When cleared, it *commits*.
-  - Committed vehicles act as reservations: drivers with priority still respect them, and drivers who must give way ignore anyone already told to wait.
-  - Under signals, turners may pull forward and wait inside the box for a gap.
-- **Looking before going.** Without a light to rely on, a driver who must give way slows to about 16 km/h at the line to look, whether or not anyone is coming. That's why unsigned junctions are slow, and why priority signs help.
-- **Don't block the box.** A driver won't enter the junction if a car stuck in it blocks their path. Otherwise the junction can knot itself into a gridlock that never clears.
-- **Signals.**
-  - A controller runs the plan phase by phase: green, amber (3 s), all-red (2 s).
-  - When the plan is edited it keeps its place. Lengthening a green extends the green that is showing; cutting it shorter than it has already shown ends it at once. Lights never jump mid-flow.
-  - Cars arriving on green with no queue cross at about 95% of the speed limit.
-  - A queue discharges at about 1870 veh/h of green per lane, so a longer green carries more cars once traffic is saturated.
-- **Pedestrians.** On a zebra, pedestrians have priority. On a signalised crossing, they walk only during their phase. Either way, they never step in front of a vehicle that can no longer stop.
-- **Turn paths.** Each turn is a straight run, a circular arc, then another straight run. Right turns (left turns in left-hand traffic) follow the curb return, so they keep their lane's distance from the curb. A test checks that every path stays on the asphalt.
-- **Calibration.** A single lane discharges about 1900 veh/h. Signal delays track Webster's formula, and a typical permissive junction gives LOS C at 200 veh/h per leg.
-- **Lane changing (MOBIL).** On an approach, drivers check every half second whether to move one lane over.
-  - *By choice:* if the next lane would let them accelerate at least 0.3 m/s² more, after subtracting 0.3 × what the car they cut in front of would lose.
-  - *By need:* about a quarter of drivers enter in whichever lane has room and must cross to a lane that serves their turn. Within 40 m of the line they accept tighter gaps, and the driver behind lets them in (zipper merge). Someone stuck for 45 s takes a turn their lane allows ("missed turn").
-  - *Safety:* a change is never allowed if the changer or its new follower would have to brake harder than 4 m/s².
-  - *Where:* no changes by choice in the solid-line zone before the stop line, nor in the first 30 m after entering the map.
-  - *Motion:* each change slides sideways over 3 s, and the car keeps blocking its old lane until it's mostly across.
-- **Roundabouts.** Each movement is one path: an entry curve, an arc round the ring, an exit curve.
-  - *Geometry:* entry and exit curves are circular arcs tangent to both the lane and the ring, so traffic keeps ring speed (about 23 km/h) instead of crawling. Curbs flare along the same curves.
-  - *Ring size:* the ring is the smallest one on which every entry joins well before the next leg's exit leaves.
-  - *Rules from structure, not proximity:* movements that share a stretch of ring follow each other like cars in one lane. A movement joining the ring gives way to everyone already circulating past that point, from where it first comes alongside the ring.
-  - *One lane:* several approach lanes enter single file, and all exits use the curb lane.
-  - *Capacity:* about 1650 veh/h, in line with published figures for one-lane roundabouts.
-- **Slip lanes and flyovers.**
-  - A slip lane is an extra curb lane that peels off before the junction, curves around a corner island, and joins the next road as an added lane. It ignores the signals.
-  - A flyover gives straight-through traffic its own lane on a bridge. Bridge traffic never conflicts with traffic or pedestrians below.
-- **Live editing.** `Simulation.applyScenario` swaps in an edited layout under running traffic.
-  - Vehicles keep their place: on an approach they keep their distance from the far end, inside the junction their progress through the turn, and on an exit their distance to the map edge.
-  - Drivers whose turn is gone take the closest allowed exit. New trips for a banned turn are counted as *diverted*.
-- **Delay.** Lost time is accumulated as it happens: below free speed, or waiting to enter the map. It's divided by the number of trips that started in the window. A queue that hasn't cleared still counts, and after an edit only trips that started under the new design count.
-- **Traffic through the day.** Each traffic stream proposes arrivals at its peak rate, and each proposal is kept with probability (rate now ÷ peak rate). This is Poisson thinning. The proposals never depend on the design, so fair tests still see identical traffic, and jumping the clock needs no rescheduling.
-- **Determinism and fair comparisons.** The same scenario and seed always play out identically.
-  - Every traffic flow (each origin–destination pair, each crossing) has its own random stream.
-  - A vehicle's size and temperament are drawn when it arrives, not when it gets onto the map.
-  - So two *different* designs run with the same seed see exactly the same cars at the same moments ("common random numbers"). That makes run-by-run differences a clean measure of the design.
+TypeScript, [Vite](https://vite.dev), [React](https://react.dev), [PixiJS](https://pixijs.com), [Zustand](https://zustand.docs.pmnd.rs) and [Vitest](https://vitest.dev).
+
+## Map data
+
+Imported junctions use map data © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors, available under the ODbL. Places are found with Nominatim, and roads are fetched from the Overpass API. Nothing is sent to these services until you press **Find**.
