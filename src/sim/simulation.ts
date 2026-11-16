@@ -114,8 +114,10 @@ const URGENT_ZONE = 40;
 const WRONG_LANE_SHARE = 0.25;
 /** A driver stuck in the wrong lane at the line this long gives up and takes a turn their lane allows. */
 const GIVE_UP_AFTER = 45;
-const GRIDLOCK_BACKLOG = 25;
-const GRIDLOCK_STOPPED = 180;
+/** More vehicles than this waiting off the map on one leg: more traffic arrives than the junction serves. */
+const OVERLOAD_BACKLOG = 25;
+/** Gridlock: drivers could go, yet nobody has entered or left the junction for this long. */
+const GRIDLOCK_AFTER = 60;
 
 export class Simulation {
   network: Network;
@@ -152,6 +154,12 @@ export class Simulation {
   private laneChangeCount = 0;
   private missedTurnCount = 0;
   private stepCount = 0;
+  /** Whether any vehicle entered or left the junction this step. */
+  private progressed = false;
+  /** How long the junction has gone without progress while drivers could have moved. */
+  private stalledFor = 0;
+  /** Whether the junction has gridlocked since the metrics last started. */
+  private gridlocked = false;
   /** Vehicles still partly in the lane they are leaving, by that lane. */
   private laneGhosts: Vehicle[][] = [];
   /** Urgent mergers waiting for a gap, by the lane they want to enter. */
@@ -191,6 +199,7 @@ export class Simulation {
     this.vehicles = this.vehicles.filter((veh) => !this.exited(veh));
 
     this.index();
+    this.watchForGridlock(dt);
     this.updatePedestrians(dt);
     this.observeQueues();
     this.accumulateDelay(dt);
@@ -235,10 +244,15 @@ export class Simulation {
 
   resetMetrics() {
     this.metrics.reset(this.scenario.legs.map((l) => l.id), this.time);
+    this.gridlocked = this.stalledFor > GRIDLOCK_AFTER;
   }
 
   getMetrics(): MetricsSnapshot {
-    return this.metrics.snapshot(this.time, this.scenario.control.type === 'signals', this.currentQueues(), this.isGridlocked());
+    return this.metrics.snapshot(this.time, this.scenario.control.type === 'signals', this.currentQueues(), {
+      gridlock: this.stalledFor > GRIDLOCK_AFTER,
+      gridlockSeen: this.gridlocked,
+      overloaded: this.isOverloaded(),
+    });
   }
 
   /** Vehicle bookkeeping since the start: every arrival is either waiting, on the map, or gone. */
@@ -270,6 +284,7 @@ export class Simulation {
     this.scenario = next;
     this.signals.setControl(next.control);
     this.clock = this.signals.clock();
+    this.stalledFor = 0;
     this.regularIn.clear();
     this.mergeRequests.clear();
     for (const veh of this.vehicles) {
@@ -1108,6 +1123,7 @@ export class Simulation {
         if (veh.committed) {
           veh.s -= len;
           veh.seg = 1;
+          this.progressed = true;
         } else {
           veh.s = len;
           veh.v = 0;
@@ -1119,6 +1135,7 @@ export class Simulation {
       if (veh.s > len) {
         veh.s -= len;
         veh.seg = 2;
+        this.progressed = true;
       }
     }
   }
@@ -1219,9 +1236,23 @@ export class Simulation {
     for (const [leg, q] of this.currentQueues()) this.metrics.observeQueue(leg, q.queue);
   }
 
-  private isGridlocked(): boolean {
-    for (const q of this.backlog.values()) if (q.length > GRIDLOCK_BACKLOG) return true;
-    return this.vehicles.some((v) => v.seg === 1 && v.stoppedFor > GRIDLOCK_STOPPED);
+  /**
+   * Gridlock is the junction knotting up: drivers in it, or at a green, and yet nobody gets in or out.
+   * Long queues alone aren't gridlock (that's overload, and shows as delay); nor is waiting at a red.
+   */
+  private watchForGridlock(dt: number) {
+    const net = this.network;
+    const couldGo = this.vehicles.some(
+      (v) => v.seg === 1 || (v.seg === 0 && connectorSignal(this.clock, net.connectors[v.connector]!) === 'green'),
+    );
+    this.stalledFor = this.progressed || !couldGo ? 0 : this.stalledFor + dt;
+    this.progressed = false;
+    if (this.stalledFor > GRIDLOCK_AFTER) this.gridlocked = true;
+  }
+
+  private isOverloaded(): boolean {
+    for (const q of this.backlog.values()) if (q.length > OVERLOAD_BACKLOG) return true;
+    return false;
   }
 }
 

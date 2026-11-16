@@ -38,7 +38,12 @@ export interface MetricsSnapshot {
   /** Average delay in the worst 15 minutes measured so far (the "peak 15 minutes"). */
   worst15Delay: number;
   legs: LegMetrics[];
+  /** Traffic in the junction has stopped moving: drivers are blocking each other. */
   gridlock: boolean;
+  /** Whether it gridlocked at any point since the metrics started, even if it later came free. */
+  gridlockSeen: boolean;
+  /** Queues are spilling off the map: more traffic arrives than the junction can serve. */
+  overloaded: boolean;
 }
 
 interface LegAccumulator {
@@ -154,7 +159,7 @@ export class MetricsCollector {
     time: number,
     signalised: boolean,
     current: Map<LegId, { queue: number; backlog: number }>,
-    gridlock: boolean,
+    state: Pick<MetricsSnapshot, 'gridlock' | 'gridlockSeen' | 'overloaded'>,
   ): MetricsSnapshot {
     const window = Math.max(time - this.start, 1e-9);
     const avgDelay = this.arrivals ? this.lost / this.arrivals : 0;
@@ -176,7 +181,7 @@ export class MetricsCollector {
         completed: a.completed,
         avgDelay: a.arrivals ? a.lost / a.arrivals : 0,
       })),
-      gridlock,
+      ...state,
     };
   }
 }

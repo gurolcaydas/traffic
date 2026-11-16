@@ -1,5 +1,6 @@
 // Scoring a level: the design is run several times on the level's traffic (the same traffic for
 // every player and every attempt), then judged on average delay, gridlock and the level's rules.
+// Queues spilling off the map aren't a failure of their own: that traffic's waiting shows as delay.
 import { t } from '../core/i18n';
 import type { Scenario } from '../core/types';
 import { makePlan, summarize, type RunResult, type TestPlan } from '../sim/evaluate';
@@ -36,7 +37,15 @@ export function scoreRuns(level: Level, design: Scenario, runs: RunResult[]): Le
   const avgDelay = runs.reduce((s, r) => s + withDetours(r), 0) / Math.max(1, runs.length);
   const gridlockRuns = runs.filter((r) => r.gridlock).length;
   const failures = [...designProblems(level, design)];
-  if (gridlockRuns) failures.push(t(`Gridlock in ${gridlockRuns} of ${runs.length} runs: queues spilled off the map.`, `${runs.length} denemenin ${gridlockRuns} tanesinde kilitlenme: kuyruklar haritadan taştı.`));
+  const overloadedRuns = runs.filter((r) => r.overloaded).length;
+  if (gridlockRuns) {
+    failures.push(
+      t(
+        `Gridlock in ${gridlockRuns} of ${runs.length} runs: drivers blocked each other and the junction stopped moving.`,
+        `${runs.length} denemenin ${gridlockRuns} tanesinde kilitlenme: sürücüler birbirini tıkadı ve kavşak durdu.`,
+      ),
+    );
+  }
   if (level.maxPedWait !== undefined && summary.pedWait.mean > level.maxPedWait) {
     failures.push(
       t(
@@ -58,6 +67,7 @@ export function scoreRuns(level: Level, design: Scenario, runs: RunResult[]): Le
     throughput: summary.throughput.mean,
     pedWait: summary.pedWait.mean,
     gridlockRuns,
+    overloadedRuns,
     runs: runs.length,
     cost: totalCost(costItems(level.scenario, design)),
   };

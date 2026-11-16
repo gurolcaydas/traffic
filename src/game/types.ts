@@ -53,6 +53,8 @@ export interface LevelResult {
   throughput: number;
   pedWait: number;
   gridlockRuns: number;
+  /** Runs that ended with queues spilling off the map. */
+  overloadedRuns: number;
   runs: number;
   cost: number;
 }

@@ -51,6 +51,7 @@ describe('scoring', () => {
     divertedPerHour: 0,
     worst15Delay: 30,
     gridlock: false,
+    overloaded: false,
     ...over,
   });
 
@@ -66,6 +67,12 @@ describe('scoring', () => {
     expect(r.passed).toBe(false);
     expect(r.stars).toBe(0);
     expect(r.failures.join(' ')).toMatch(/Gridlock in 1 of 2/);
+  });
+
+  it('does not fail on overload alone: the waiting already shows as delay', () => {
+    const r = scoreRuns(level, level.scenario, [run({ overloaded: true }), run()]);
+    expect(r.passed).toBe(true);
+    expect(r.overloadedRuns).toBe(1);
   });
 
   it('counts diverted trips as a detour, so banning turns is not free', () => {

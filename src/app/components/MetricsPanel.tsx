@@ -49,7 +49,23 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
             </div>
           </div>
 
-          {m.gridlock && <p className="alert">{t("Queues are spilling off the map. This junction can't cope with this traffic.", 'Kuyruklar haritanın dışına taşıyor. Bu kavşak bu trafiği kaldıramıyor.')}</p>}
+          {m.gridlock ? (
+            <p className="alert">
+              {t(
+                'Gridlock: drivers are blocking each other and nobody can get through the junction.',
+                'Kilitlenme: sürücüler birbirini tıkıyor ve kimse kavşaktan geçemiyor.',
+              )}
+            </p>
+          ) : (
+            m.overloaded && (
+              <p className="alert">
+                {t(
+                  "Queues are spilling off the map. This junction can't cope with this much traffic.",
+                  'Kuyruklar haritanın dışına taşıyor. Bu kavşak bu kadar trafiği kaldıramıyor.',
+                )}
+              </p>
+            )
+          )}
 
           <dl className="stats">
             <div>

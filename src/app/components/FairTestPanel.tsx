@@ -282,6 +282,14 @@ function Results({ outcome, stale, hasPeds }: { outcome: Outcome; stale: boolean
           })}
         </tbody>
       </table>
+      {(r.overloadRate > 0 || c.overloadRate > 0) && (
+        <p className="hint">
+          {t(
+            `Queues spilled off the map in ${Math.round(r.overloadRate * 100)}% of runs before, ${Math.round(c.overloadRate * 100)}% now.`,
+            `Kuyruklar haritadan taştı: önce denemelerin %${Math.round(r.overloadRate * 100)}'inde, şimdi %${Math.round(c.overloadRate * 100)}'inde.`,
+          )}
+        </p>
+      )}
       {(r.gridlockRate > 0 || c.gridlockRate > 0) && (
         <p className="hint">
           {t(

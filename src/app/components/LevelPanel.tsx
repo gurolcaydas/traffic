@@ -79,7 +79,7 @@ export function LevelPanel() {
           ))}
         </div>
         <ul className="rules">
-          <li>{t('No gridlock in any run.', 'Hiçbir denemede kilitlenme olmamalı.')}</li>
+          <li>{t('No gridlock in any run (traffic must keep moving).', 'Hiçbir denemede kilitlenme olmamalı (trafik akmaya devam etmeli).')}</li>
           {level.requiredCrossings?.length ? <li>{t(`Keep the crossings on legs ${level.requiredCrossings.join(', ')}.`, `${level.requiredCrossings.join(', ')} numaralı yollardaki yaya geçitleri kalmalı.`)}</li> : null}
           {level.maxPedWait !== undefined && <li>{t(`Pedestrians wait ${level.maxPedWait} s or less on average.`, `Yayalar ortalama en fazla ${level.maxPedWait} sn beklemeli.`)}</li>}
           {level.fixedLanes?.length ? <li>{t(`Legs ${level.fixedLanes.join(' and ')} can't be widened (shops).`, `${level.fixedLanes.join(' ve ')} numaralı yollar genişletilemez (dükkânlar).`)}</li> : null}
@@ -168,6 +168,14 @@ export function LevelPanel() {
                 <li key={f}>{f}</li>
               ))}
             </ul>
+          )}
+          {result.overloadedRuns > 0 && (
+            <p className="hint">
+              {t(
+                `Queues spilled off the map in ${result.overloadedRuns} of ${result.runs} runs: more traffic arrives than this junction can serve.`,
+                `${result.runs} denemenin ${result.overloadedRuns} tanesinde kuyruklar haritadan taştı: gelen trafik bu kavşağın kapasitesini aşıyor.`,
+              )}
+            </p>
           )}
           <div className="row gap">
             {result.passed && next && (

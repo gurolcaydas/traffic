@@ -61,13 +61,35 @@ describe('Simulation', () => {
     expect(m.gridlock).toBe(false);
   });
 
-  it('reports gridlock and LOS F when demand far exceeds capacity', () => {
+  it('reports overload and LOS F when demand far exceeds capacity, but not gridlock while traffic still moves', () => {
     const sim = new Simulation(crossroad({ vehPerHourPerLeg: 900 }));
     sim.run(900);
     const m = sim.getMetrics();
     expect(m.los).toBe('F');
-    expect(m.gridlock).toBe(true);
+    expect(m.overloaded).toBe(true);
+    expect(m.gridlock).toBe(false);
+    expect(m.gridlockSeen).toBe(false);
     expect(Math.max(...m.legs.map((l) => l.backlog))).toBeGreaterThan(0);
+  });
+
+  it('reports gridlock when nobody can get through the junction', () => {
+    // Zebras with a pedestrian every couple of seconds: drivers may never go.
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 300, crosswalks: 'zebra', pedPerHourPerCrosswalk: 1500 }));
+    sim.run(300);
+    expect(sim.getMetrics().gridlock).toBe(true);
+    // A new measuring window still knows the junction is knotted right now.
+    sim.resetMetrics();
+    sim.run(10);
+    expect(sim.getMetrics().gridlockSeen).toBe(true);
+  });
+
+  it('does not call waiting at a red gridlock', () => {
+    // Only leg 2 ever gets a green: the others queue for good, but they are held, not knotted.
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 300, control: { type: 'signals', phases: [{ green: 30, movements: [{ from: '2', to: '*' }] }] } }));
+    sim.run(1200);
+    const m = sim.getMetrics();
+    expect(m.overloaded).toBe(true);
+    expect(m.gridlockSeen).toBe(false);
   });
 
   it('gives more capacity with two lanes and signals than one uncontrolled lane', () => {

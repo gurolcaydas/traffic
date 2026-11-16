@@ -66,7 +66,10 @@ export interface RunResult {
   divertedPerHour: number;
   /** Average delay in the worst 15 minutes of the run. */
   worst15Delay: number;
+  /** The junction knotted up at some point in the run. */
   gridlock: boolean;
+  /** Queues were spilling off the map at the end of the run. */
+  overloaded: boolean;
 }
 
 export function runOnce(scenario: Scenario, seed: number, warmup: number, duration: number, startHour?: number): RunResult {
@@ -85,7 +88,8 @@ export function runOnce(scenario: Scenario, seed: number, warmup: number, durati
     pedWait: m.pedAvgWait,
     divertedPerHour: (m.diverted / m.window) * 3600,
     worst15Delay: m.worst15Delay,
-    gridlock: m.gridlock,
+    gridlock: m.gridlockSeen,
+    overloaded: m.overloaded,
   };
 }
 
@@ -108,6 +112,8 @@ export interface DesignSummary {
   los: Los;
   /** Share of runs that ended in gridlock. */
   gridlockRate: number;
+  /** Share of runs that ended with queues spilling off the map. */
+  overloadRate: number;
 }
 
 export function summarize(runs: RunResult[], signalised: boolean): DesignSummary {
@@ -123,6 +129,7 @@ export function summarize(runs: RunResult[], signalised: boolean): DesignSummary
     divertedPerHour: est('divertedPerHour'),
     los: levelOfService(avgDelay.mean, signalised),
     gridlockRate: runs.filter((r) => r.gridlock).length / Math.max(1, runs.length),
+    overloadRate: runs.filter((r) => r.overloaded).length / Math.max(1, runs.length),
   };
 }
 
