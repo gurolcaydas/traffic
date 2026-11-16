@@ -234,7 +234,38 @@ function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<stri
       medianWidth,
     });
   });
+  if (rb) for (const [from, to] of slipTarget) clearRing(out.get(from)!, out.get(to)!, rb);
   return out;
+}
+
+/** Grass between a side road and the outside of a roundabout's ring. */
+const RING_ISLAND = 5;
+/** Furthest out a side road may peel away; beyond that it isn't a side road any more. */
+const MAX_SLIP_SETBACK = 120;
+
+/**
+ * Next to a roundabout, a side road must curve round outside the ring. Move both of its ends
+ * further out until it does, or drop it if no sensible distance works (roads too far apart).
+ */
+function clearRing(a: LegGeometry, b: LegGeometry, rb: RoundaboutGeometry) {
+  const half = a.laneWidth / 2 + 0.4;
+  const oA = a.slipEdge! - a.laneWidth / 2;
+  const oB = -(b.slipOutEdge! - b.laneWidth / 2);
+  for (let setback = SLIP_SETBACK; setback <= MAX_SLIP_SETBACK; setback += 5) {
+    const sA = a.stopLine + setback;
+    const sB = b.stopLine + setback;
+    const path = connectorPath(new Polyline([along(a, sA + 10, oA), along(a, sA, oA)]), new Polyline([along(b, sB, oB), along(b, sB + 10, oB)]), Infinity);
+    const nearest = Math.min(...path.points.map((p) => Math.hypot(p.x, p.y)));
+    if (nearest - half >= rb.outerRadius + RING_ISLAND) {
+      a.slipEnd = sA;
+      b.slipOutStart = sB;
+      a.length = Math.max(a.length, sA + 10);
+      b.length = Math.max(b.length, sB + 10);
+      return;
+    }
+  }
+  a.slipEdge = a.slipEnd = a.slipTarget = null;
+  b.slipOutEdge = b.slipOutStart = null;
 }
 
 function along(g: LegGeometry, s: number, offset: number): Vec2 {

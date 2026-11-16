@@ -259,3 +259,33 @@ describe('buildNetwork: roundabouts', () => {
     expect(through.ringShares.some((s) => s.other === fromSouth.idx)).toBe(true);
   });
 });
+
+describe('buildNetwork: side roads at a roundabout', () => {
+  const withSideRoads = (opts: Parameters<typeof crossroad>[0]) => {
+    const s = crossroad({ control: { type: 'roundabout' }, ...opts });
+    for (const l of s.legs) l.slipLane = true;
+    return s;
+  };
+
+  it('curve round outside the ring, leaving an island, however wide the roads', () => {
+    for (const opts of [{}, { lanes: 3 }, { lanes: 4, crosswalks: 'zebra' as const }, { angles: [0, 120, 240] }, { angles: [0, 70, 145, 215, 290], lanes: 2 }]) {
+      const net = buildNetwork(withSideRoads(opts));
+      const slips = net.connectors.filter((c) => c.kind === 'slip');
+      expect(slips.length).toBeGreaterThan(0);
+      for (const c of slips) {
+        const nearest = Math.min(...c.path.points.map((p) => Math.hypot(p.x, p.y)));
+        expect(nearest - net.lanes[c.inLane]!.width / 2).toBeGreaterThan(net.roundabout!.outerRadius + 4);
+      }
+    }
+  });
+
+  it('are left out where the roads are too far apart to bend round the ring', () => {
+    // A T-junction: a side road along the straight would have to cut through the ring.
+    const net = buildNetwork(withSideRoads({ angles: [0, 180, 270] }));
+    const slips = net.connectors.filter((c) => c.kind === 'slip');
+    // Road 1 (east) to road 2 (west) runs straight across; the two right-angle corners keep theirs.
+    expect(slips.map((c) => `${c.from}>${c.to}`).sort()).toEqual(['2>3', '3>1']);
+    expect(net.legs.get('1')!.slipEdge).toBeNull();
+    expect(net.legs.get('2')!.slipOutEdge).toBeNull();
+  });
+});

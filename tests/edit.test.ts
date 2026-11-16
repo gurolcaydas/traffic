@@ -112,3 +112,12 @@ describe('side roads', () => {
     }
   });
 });
+
+describe('side road choices at a roundabout', () => {
+  it('only offers side roads that fit outside the ring', () => {
+    const t = crossroad({ angles: [0, 180, 270] });
+    expect(sideRoadCandidates(t).map((c) => c.from)).toEqual(['1', '2', '3']);
+    t.control = { type: 'roundabout' };
+    expect(sideRoadCandidates(t).map((c) => c.from)).toEqual(['2', '3']);
+  });
+});

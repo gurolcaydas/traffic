@@ -64,7 +64,11 @@ export function sideRoadCandidates(s: Scenario): Array<{ from: LegId; to: LegId 
   if (s.legs.length < 2) return [];
   const sorted = [...s.legs].sort((a, b) => norm360(a.angle) - norm360(b.angle));
   const side = s.driveSide === 'right' ? 1 : -1;
-  return sorted.map((leg, i) => ({ from: leg.id, to: sorted[(i + side + sorted.length) % sorted.length]!.id }));
+  const all = sorted.map((leg, i) => ({ from: leg.id, to: sorted[(i + side + sorted.length) % sorted.length]!.id }));
+  if (s.control.type !== 'roundabout') return all;
+  // Round a roundabout, only where the side road fits outside the ring.
+  const net = buildNetwork({ ...s, legs: s.legs.map((l) => ({ ...l, slipLane: true })) });
+  return all.filter(({ from }) => net.legs.get(from)?.slipEdge !== null);
 }
 
 export function toggleSideRoad(s: Scenario, from: LegId) {
