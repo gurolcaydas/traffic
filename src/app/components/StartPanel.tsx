@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../../core/i18n';
 import { SHAPES, type Shape } from '../../scenarios/setup';
 import { useRules } from '../levelRules';
 import { currentSetup, useApp } from '../store';
@@ -21,37 +22,43 @@ export function StartPanel() {
   return (
     <section className="panel">
       <header className="panel-head">
-        <h2>Start</h2>
-        <span className="hint">Each choice starts a new junction</span>
+        <h2>{t('Start', 'Başlangıç')}</h2>
+        <span className="hint">{t('Each choice starts a new junction', 'Her seçim yeni bir kavşak başlatır')}</span>
       </header>
       <div className="field">
-        <label>Shape</label>
+        <label>{t('Shape', 'Şekil')}</label>
         <Segmented
-          label="Shape"
+          label={t('Shape', 'Şekil')}
           value={shape}
           options={(Object.keys(SHAPES) as Shape[]).map((k) => ({ value: k, label: SHAPES[k].label }))}
-          onChange={(s) => askReplace(`Start over: ${SHAPES[s].label}`, () => newJunction({ shape: s }))}
+          onChange={(s) => askReplace(`${t('Start over', 'Baştan başla')}: ${SHAPES[s].label}`, () => newJunction({ shape: s }))}
         />
       </div>
       <div className="field">
-        <label>Traffic drives on the</label>
+        <label>{t('Traffic drives on the', 'Trafik şu taraftan akar')}</label>
         <Segmented
-          label="Drive side"
+          label={t('Drive side', 'Sürüş yönü')}
           value={scenario.driveSide}
           options={[
-            { value: 'right', label: 'Right' },
-            { value: 'left', label: 'Left' },
+            { value: 'right', label: t('Right', 'Sağ') },
+            { value: 'left', label: t('Left', 'Sol') },
           ]}
-          onChange={(driveSide) => driveSide !== scenario.driveSide && askReplace(`Start again driving on the ${driveSide}`, () => newJunction({ driveSide }))}
+          onChange={(driveSide) =>
+            driveSide !== scenario.driveSide &&
+            askReplace(
+              driveSide === 'right' ? t('Start again driving on the right', 'Sağdan akan trafikle yeniden başla') : t('Start again driving on the left', 'Soldan akan trafikle yeniden başla'),
+              () => newJunction({ driveSide }),
+            )
+          }
         />
       </div>
       <button className="btn real-junction" onClick={() => setImporting(true)}>
-        🌍 Real junction from the map
+        🌍 {t('Real junction from the map', 'Haritadan gerçek kavşak')}
       </button>
       {importing && (
         <ImportDialog
           onClose={() => setImporting(false)}
-          onOpen={(s, label) => askReplace(`Open ${label}`, () => loadDesign(s))}
+          onOpen={(s, label) => askReplace(t(`Open ${label}`, `${label} aç`), () => loadDesign(s))}
         />
       )}
     </section>

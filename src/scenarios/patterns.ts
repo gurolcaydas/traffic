@@ -1,5 +1,6 @@
 // Time-of-day traffic patterns. The demand table is read as peak-hour traffic; a pattern scales it
 // through the day and can make it tidal (towards the centre in the morning, away in the evening).
+import { t } from '../core/i18n';
 import type { DemandPattern, LegId } from '../core/types';
 
 export interface PatternPreset {
@@ -13,10 +14,16 @@ export interface PatternPreset {
 
 export const PATTERNS: Record<string, PatternPreset> = {
   commuter: {
-    label: 'Commuter day',
-    description: 'Morning and evening rush hours, quieter midday. Mornings head into town, evenings out.',
+    get label() {
+      return t('Commuter day', 'İşe gidiş-dönüş günü');
+    },
+    get description() {
+      return t('Morning and evening rush hours, quieter midday. Mornings head into town, evenings out.', 'Sabah ve akşam yoğun saatleri, öğlen daha sakin. Sabahları şehre doğru, akşamları dışarı.');
+    },
     tidal: true,
-    centreLabel: 'City centre is along leg',
+    get centreLabel() {
+      return t('City centre is along leg', 'Şehir merkezi şu yol yönünde');
+    },
     make: (centreLeg) => ({
       id: 'commuter',
       startHour: 6,
@@ -27,10 +34,16 @@ export const PATTERNS: Record<string, PatternPreset> = {
     }),
   },
   school: {
-    label: 'School run',
-    description: 'Two short, sharp peaks at drop-off and pick-up.',
+    get label() {
+      return t('School run', 'Okul saati');
+    },
+    get description() {
+      return t('Two short, sharp peaks at drop-off and pick-up.', 'Okula bırakma ve alma saatlerinde iki kısa, keskin zirve.');
+    },
     tidal: true,
-    centreLabel: 'School is along leg',
+    get centreLabel() {
+      return t('School is along leg', 'Okul şu yol yönünde');
+    },
     make: (centreLeg) => ({
       id: 'school',
       startHour: 7,
@@ -41,10 +54,16 @@ export const PATTERNS: Record<string, PatternPreset> = {
     }),
   },
   event: {
-    label: 'Evening event',
-    description: 'Quiet, then a crowd arrives for a match or concert, then everyone leaves at once.',
+    get label() {
+      return t('Evening event', 'Akşam etkinliği');
+    },
+    get description() {
+      return t('Quiet, then a crowd arrives for a match or concert, then everyone leaves at once.', 'Önce sakin, sonra bir maç ya da konser için kalabalık gelir, ardından herkes aynı anda ayrılır.');
+    },
     tidal: true,
-    centreLabel: 'Venue is along leg',
+    get centreLabel() {
+      return t('Venue is along leg', 'Etkinlik alanı şu yol yönünde');
+    },
     make: (centreLeg) => ({
       id: 'event',
       startHour: 17,
@@ -55,8 +74,12 @@ export const PATTERNS: Record<string, PatternPreset> = {
     }),
   },
   weekend: {
-    label: 'Weekend',
-    description: 'A slow build to a long, gentle midday hump. No direction.',
+    get label() {
+      return t('Weekend', 'Hafta sonu');
+    },
+    get description() {
+      return t('A slow build to a long, gentle midday hump. No direction.', 'Öğlene doğru yavaşça yükselen uzun, yumuşak bir tepe. Yön yok.');
+    },
     tidal: false,
     make: () => ({
       id: 'weekend',

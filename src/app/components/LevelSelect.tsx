@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { t } from '../../core/i18n';
 import { LEVELS } from '../../game/levels';
 import { useApp } from '../store';
 import { Stars } from './LevelPanel';
@@ -21,10 +22,10 @@ export function LevelSelect() {
   const total = LEVELS.reduce((s, l) => s + (progress[l.id] ?? 0), 0);
 
   return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-label="Choose a level" onClick={() => setShowLevels(false)}>
+    <div className="overlay" role="dialog" aria-modal="true" aria-label={t('Choose a level', 'Bir bölüm seçin')} onClick={() => setShowLevels(false)}>
       <div className="level-select" onClick={(e) => e.stopPropagation()}>
         <header className="panel-head">
-          <h2>Levels</h2>
+          <h2>{t('Levels', 'Bölümler')}</h2>
           <span className="hint">
             <span className="num">{total}</span> / {LEVELS.length * 3} ★
           </span>
@@ -34,10 +35,10 @@ export function LevelSelect() {
             const stars = progress[level.id] ?? 0;
             const locked = i > 0 && !(progress[LEVELS[i - 1]!.id] ?? 0);
             return (
-              <button key={level.id} className={`level-card ${locked ? 'locked' : ''}`} disabled={locked} onClick={() => askReplace(`Play “${level.title}”`, () => startLevel(level.id))}>
+              <button key={level.id} className={`level-card ${locked ? 'locked' : ''}`} disabled={locked} onClick={() => askReplace(t(`Play “${level.title}”`, `“${level.title}” oyna`), () => startLevel(level.id))}>
                 <span className="level-num num">{i + 1}</span>
                 <span className="level-title">{level.title}</span>
-                <span className="level-brief">{locked ? 'Solve the previous level to unlock.' : level.brief}</span>
+                <span className="level-brief">{locked ? t('Solve the previous level to unlock.', 'Açmak için önceki bölümü çözün.') : level.brief}</span>
                 <Stars n={stars} />
               </button>
             );
@@ -45,10 +46,10 @@ export function LevelSelect() {
         </div>
         <div className="row gap">
           <button className="btn" onClick={playSandbox}>
-            Open the sandbox instead
+            {t('Open the sandbox instead', 'Bunun yerine serbest modu aç')}
           </button>
           <button className="link" onClick={() => setShowLevels(false)}>
-            Close
+            {t('Close', 'Kapat')}
           </button>
         </div>
       </div>

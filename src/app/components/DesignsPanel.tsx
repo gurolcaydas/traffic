@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { getLang, t } from '../../core/i18n';
 import { deleteDesign, designFile, listDesigns, parseScenario, saveDesign, type SavedDesign } from '../../scenarios/storage';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
@@ -10,7 +11,7 @@ export function DesignsPanel() {
   const savedDesign = useApp((s) => s.savedDesign);
   const { loadDesign, askReplace, markSaved } = useApp.getState();
   const [designs, setDesigns] = useState<SavedDesign[]>(() => listDesigns());
-  const [name, setName] = useState('My junction');
+  const [name, setName] = useState(() => t('My junction', 'Kavşağım'));
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   // A design saved from the "unsaved changes" question shows up here too.
@@ -18,20 +19,20 @@ export function DesignsPanel() {
   if (rules.inLevel) return null;
 
   const save = () => {
-    const n = name.trim() || 'My junction';
+    const n = name.trim() || t('My junction', 'Kavşağım');
     if (saveDesign(n, scenario)) {
       markSaved();
       setDesigns(listDesigns());
-      setMessage({ text: `Saved “${n}”.` });
-    } else setMessage({ text: "This browser won't store designs (private window?). Use Export instead.", bad: true });
+      setMessage({ text: t(`Saved “${n}”.`, `“${n}” kaydedildi.`) });
+    } else setMessage({ text: t("This browser won't store designs (private window?). Use Export instead.", 'Bu tarayıcı tasarımları saklamıyor (gizli pencere mi?). Bunun yerine Dışa aktar’ı kullanın.'), bad: true });
   };
 
   const exportFile = () => {
-    const n = name.trim() || 'My junction';
+    const n = name.trim() || t('My junction', 'Kavşağım');
     const url = URL.createObjectURL(new Blob([designFile(n, scenario)], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${n.replace(/[^\w-]+/g, '-').toLowerCase()}.traffic.json`;
+    a.download = `${n.replace(/[^\p{L}\p{N}_-]+/gu, '-').toLocaleLowerCase()}.traffic.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -39,28 +40,28 @@ export function DesignsPanel() {
   const importFile = async (file: File) => {
     try {
       const parsed = parseScenario(JSON.parse(await file.text()));
-      if (!parsed.scenario) return setMessage({ text: parsed.error ?? 'Could not read that file.', bad: true });
+      if (!parsed.scenario) return setMessage({ text: parsed.error ?? t('Could not read that file.', 'Bu dosya okunamadı.'), bad: true });
       const n = parsed.name ?? file.name;
-      askReplace(`Open “${n}”`, () => {
+      askReplace(t(`Open “${n}”`, `“${n}” aç`), () => {
         loadDesign(parsed.scenario!);
         if (parsed.name) setName(parsed.name);
-        setMessage({ text: `Opened “${n}”.` });
+        setMessage({ text: t(`Opened “${n}”.`, `“${n}” açıldı.`) });
       });
     } catch {
-      setMessage({ text: 'That file is not valid JSON.', bad: true });
+      setMessage({ text: t('That file is not valid JSON.', 'Bu dosya geçerli bir JSON değil.'), bad: true });
     }
   };
 
   return (
     <section className="panel">
       <header className="panel-head">
-        <h2>My designs</h2>
-        <span className="hint">Saved in this browser</span>
+        <h2>{t('My designs', 'Tasarımlarım')}</h2>
+        <span className="hint">{t('Saved in this browser', 'Bu tarayıcıda saklanır')}</span>
       </header>
       <div className="row gap">
-        <input className="text" aria-label="Design name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+        <input className="text" aria-label={t('Design name', 'Tasarım adı')} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
         <button className="btn primary" onClick={save}>
-          Save
+          {t('Save', 'Kaydet')}
         </button>
       </div>
       {message && <p className={message.bad ? 'alert' : 'hint'}>{message.text}</p>}
@@ -70,31 +71,31 @@ export function DesignsPanel() {
             <li key={d.id}>
               <span className="design-name">{d.name}</span>
               <span className="hint">
-                {d.scenario.legs.length} roads · {new Date(d.savedAt).toLocaleDateString()}
+                {d.scenario.legs.length} {t('roads', 'yol')} · {new Date(d.savedAt).toLocaleDateString(getLang())}
               </span>
-              <button className="link" onClick={() => askReplace(`Open “${d.name}”`, () => loadDesign(d.scenario))}>
-                Open
+              <button className="link" onClick={() => askReplace(t(`Open “${d.name}”`, `“${d.name}” aç`), () => loadDesign(d.scenario))}>
+                {t('Open', 'Aç')}
               </button>
               <button
                 className="link danger"
-                aria-label={`Delete ${d.name}`}
+                aria-label={t(`Delete ${d.name}`, `${d.name} sil`)}
                 onClick={() => {
                   deleteDesign(d.id);
                   setDesigns(listDesigns());
                 }}
               >
-                Delete
+                {t('Delete', 'Sil')}
               </button>
             </li>
           ))}
         </ul>
       )}
       <div className="row gap">
-        <button className="btn" onClick={exportFile} title="Download this design as a file">
-          Export file
+        <button className="btn" onClick={exportFile} title={t('Download this design as a file', 'Bu tasarımı dosya olarak indir')}>
+          {t('Export file', 'Dışa aktar')}
         </button>
-        <button className="btn" onClick={() => fileInput.current?.click()} title="Open a design from a file">
-          Import file
+        <button className="btn" onClick={() => fileInput.current?.click()} title={t('Open a design from a file', 'Dosyadan bir tasarım aç')}>
+          {t('Import file', 'İçe aktar')}
         </button>
         <input
           ref={fileInput}

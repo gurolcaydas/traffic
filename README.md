@@ -29,6 +29,7 @@ Map data © OpenStreetMap contributors, ODbL. Nothing is sent until you press Fi
 - **Pedestrians** and **Traffic lights** switches turn either on or off in one click, and switching back restores what was there (a zebra becomes a crossing with lights when the lights go on, and back).
 - **Start over** offers six templates: crossroad, skewed, T, Y, 5-way, 6-way.
 - **My designs** saves designs in your browser, and can export one to a `.traffic.json` file or import it again on another computer.
+- **EN / TR** in the top bar switches the whole app between English and Turkish. The first visit follows the browser's language, and the choice is remembered.
 
 **Earlier phases (2a and up):** There's a sandbox you can edit while the traffic runs:
 

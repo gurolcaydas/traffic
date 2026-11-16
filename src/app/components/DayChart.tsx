@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { t } from '../../core/i18n';
 import type { DemandPattern } from '../../core/types';
 import { demandFactor, formatClock, interpolate } from '../../scenarios/patterns';
 
@@ -37,15 +38,18 @@ export function DayChart({ pattern, now, onJump }: { pattern: DemandPattern; now
     <div className="day-chart">
       {tidal && (
         <div className="chart-legend" aria-hidden>
-          <span><i className="sw overall" />All trips</span>
-          <span><i className="sw into" />Into leg {centre}</span>
-          <span><i className="sw out" />Out of leg {centre}</span>
+          <span><i className="sw overall" />{t('All trips', 'Tüm yolculuklar')}</span>
+          <span><i className="sw into" />{t(`Into leg ${centre}`, `${centre} yoluna giren`)}</span>
+          <span><i className="sw out" />{t(`Out of leg ${centre}`, `${centre} yolundan çıkan`)}</span>
         </div>
       )}
       <svg
         viewBox={`0 0 ${W} ${H}`}
         role="img"
-        aria-label={`Traffic through the day, ${formatClock(pattern.startHour)} to ${formatClock(pattern.endHour)}. Click to jump the clock.`}
+        aria-label={t(
+          `Traffic through the day, ${formatClock(pattern.startHour)} to ${formatClock(pattern.endHour)}. Click to jump the clock.`,
+          `Gün boyu trafik, ${formatClock(pattern.startHour)}–${formatClock(pattern.endHour)}. Saati oraya atlatmak için tıklayın.`,
+        )}
         onMouseMove={(e) => setHover(hourAt(e.clientX, e.currentTarget.getBoundingClientRect()))}
         onMouseLeave={() => setHover(null)}
         onClick={(e) => onJump(hourAt(e.clientX, e.currentTarget.getBoundingClientRect()))}
@@ -79,17 +83,19 @@ export function DayChart({ pattern, now, onJump }: { pattern: DemandPattern; now
       <div className="chart-tip" aria-live="polite">
         {hover !== null ? (
           <>
-            <strong className="num">{formatClock(hover)}</strong> · <span className="num">{Math.round(overall(hover) * 100)}%</span> of peak
+            <strong className="num">{formatClock(hover)}</strong> · <span className="num">{Math.round(overall(hover) * 100)}%</span> {t('of peak', 'zirve trafiği')}
             {tidal && (
               <>
-                {' '}· into {centre} <span className="num">{Math.round(into(hover) * 100)}%</span> · out <span className="num">{Math.round(out(hover) * 100)}%</span>
+                {' '}· {t(`into ${centre}`, `${centre} yoluna giren`)} <span className="num">{Math.round(into(hover) * 100)}%</span> · {t('out', 'çıkan')}{' '}
+                <span className="num">{Math.round(out(hover) * 100)}%</span>
               </>
             )}
-            <span className="hint"> · click to jump here</span>
+            <span className="hint"> · {t('click to jump here', 'buraya atlamak için tıklayın')}</span>
           </>
         ) : now !== null ? (
           <>
-            Now <strong className="num">{formatClock(now)}</strong> · <span className="num">{Math.round(overall(now) * 100)}%</span> of peak traffic
+            {t('Now', 'Şimdi')} <strong className="num">{formatClock(now)}</strong> · <span className="num">{Math.round(overall(now) * 100)}%</span>{' '}
+            {t('of peak traffic', 'zirve trafiği')}
           </>
         ) : null}
       </div>

@@ -1,3 +1,4 @@
+import { LANGS, getLang, setLang, t } from '../../core/i18n';
 import { formatClock } from '../../scenarios/patterns';
 import { useApp, type ThemeChoice } from '../store';
 import { LOS_TEXT, SETTLE } from './MetricsPanel';
@@ -30,54 +31,59 @@ export function TopBar({ onFit }: { onFit: () => void }) {
           <path d="M12 2v20M2 12h20" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
           <circle cx="12" cy="12" r="4.5" fill="var(--accent)" stroke="currentColor" strokeWidth="2" />
         </svg>
-        <span>Traffic</span>
-        <span className="tag">{mode.kind === 'level' ? 'Level' : 'Sandbox'}</span>
+        <span>{t('Traffic', 'Trafik')}</span>
+        <span className="tag">{mode.kind === 'level' ? t('Level', 'Bölüm') : t('Sandbox', 'Serbest mod')}</span>
         <button className="btn" onClick={() => setShowLevels(true)}>
-          ★ Levels
+          ★ {t('Levels', 'Bölümler')}
         </button>
       </div>
 
       <div className="controls">
-        <button className="btn primary" onClick={() => setPlaying(!playing)} aria-label={playing ? 'Pause' : 'Play'}>
-          {playing ? '❚❚ Pause' : '▶ Play'}
+        <button className="btn primary" onClick={() => setPlaying(!playing)} aria-label={playing ? t('Pause', 'Duraklat') : t('Play', 'Oynat')}>
+          {playing ? `❚❚ ${t('Pause', 'Duraklat')}` : `▶ ${t('Play', 'Oynat')}`}
         </button>
-        <Segmented label="Speed" value={speed} options={SPEEDS.map((s) => ({ value: s, label: `${s}×` }))} onChange={setSpeed} />
-        <button className="btn" onClick={restart} title="Clear the junction and start again" aria-label="Restart">
-          ↺<span className="btn-label"> Restart</span>
+        <Segmented label={t('Speed', 'Hız')} value={speed} options={SPEEDS.map((s) => ({ value: s, label: `${s}×` }))} onChange={setSpeed} />
+        <button className="btn" onClick={restart} title={t('Clear the junction and start again', 'Kavşağı boşalt ve yeniden başlat')} aria-label={t('Restart', 'Yeniden başlat')}>
+          ↺<span className="btn-label"> {t('Restart', 'Yeniden başlat')}</span>
         </button>
-        <button className="btn" onClick={onFit} title="Fit the junction in view (or double-click the map)" aria-label="Fit">
-          ⤢<span className="btn-label"> Fit</span>
+        <button className="btn" onClick={onFit} title={t('Fit the junction in view (or double-click the map)', 'Kavşağı ekrana sığdır (ya da haritaya çift tıklayın)')} aria-label={t('Fit', 'Sığdır')}>
+          ⤢<span className="btn-label"> {t('Fit', 'Sığdır')}</span>
         </button>
-        <span className="clock num" title={timeOfDay !== null ? 'Time of day' : 'Simulated time'}>
+        <span className="clock num" title={timeOfDay !== null ? t('Time of day', 'Günün saati') : t('Simulated time', 'Simülasyon süresi')}>
           {timeOfDay !== null ? formatClock(timeOfDay) : clockText(simTime)}
           {clock && (
             <span className="phase">
-              {' · '}phase {clock.phase + 1} {clock.stage === 'green' ? 'green' : clock.stage === 'amber' ? 'amber' : 'all-red'}
+              {' · '}
+              {t('phase', 'faz')} {clock.phase + 1}{' '}
+              {clock.stage === 'green' ? t('green', 'yeşil') : clock.stage === 'amber' ? t('amber', 'sarı') : t('all-red', 'tüm kırmızı')}
             </span>
           )}
         </span>
         {metrics && metrics.window >= SETTLE && (
           <button
             className="flow-badge"
-            title="How it's flowing: show details"
+            title={t("How it's flowing: show details", 'Trafik akışı: ayrıntıları göster')}
             onClick={() => document.getElementById('flow')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
           >
             <span className={`los los-${metrics.los}`}>{metrics.los}</span>
-            {metrics.gridlock ? 'Gridlock' : LOS_TEXT[metrics.los]}
+            {metrics.gridlock ? t('Gridlock', 'Kilitlenme') : LOS_TEXT[metrics.los]!()}
           </button>
         )}
       </div>
 
-      <Segmented<ThemeChoice>
-        label="Theme"
-        value={theme}
-        options={[
-          { value: 'system', label: '◐', title: 'Theme: follow the system' },
-          { value: 'light', label: '☀', title: 'Theme: light' },
-          { value: 'dark', label: '☾', title: 'Theme: dark' },
-        ]}
-        onChange={setTheme}
-      />
+      <div className="topbar-end">
+        <Segmented label={t('Language', 'Dil')} value={getLang()} options={LANGS} onChange={setLang} />
+        <Segmented<ThemeChoice>
+          label={t('Theme', 'Tema')}
+          value={theme}
+          options={[
+            { value: 'system', label: '◐', title: t('Theme: follow the system', 'Tema: sistemi izle') },
+            { value: 'light', label: '☀', title: t('Theme: light', 'Tema: açık') },
+            { value: 'dark', label: '☾', title: t('Theme: dark', 'Tema: koyu') },
+          ]}
+          onChange={setTheme}
+        />
+      </div>
     </header>
   );
 }

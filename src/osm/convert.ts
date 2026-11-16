@@ -1,6 +1,7 @@
 // Turning OpenStreetMap data around a point into a playable junction. Real map data is messy:
 // roads are split into many ways, a divided road appears as two one-way ways, and lane counts are
 // often missing. This keeps what the simulator can use and says what it simplified.
+import { t } from '../core/i18n';
 import { MAX_LANES, type ControlSpec, type CrosswalkSpec, type DriveSide, type LegSpec, type Scenario, type VehicleDemand } from '../core/types';
 import { autoSignalPlan } from '../scenarios/setup';
 import { MAX_LEGS, MIN_GAP } from '../scenarios/shape';
@@ -78,7 +79,7 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
   const nodes = new Map<number, OsmElement>();
   for (const e of elements) if (e.type === 'node' && e.lat !== undefined) nodes.set(e.id, e);
   const ways = elements.filter((e) => e.type === 'way' && e.nodes && e.tags?.highway && ROAD_CLASSES[e.tags.highway]);
-  if (ways.length === 0) return { error: 'No roads for cars here. Try a point right on a junction.' };
+  if (ways.length === 0) return { error: t('No roads for cars here. Try a point right on a junction.', 'Burada araç yolu yok. Tam bir kavşağın üzerindeki bir noktayı deneyin.') };
 
   // Local metres around the point (fine over a few hundred metres).
   const k = Math.cos((point.lat * Math.PI) / 180);
@@ -97,7 +98,7 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
     roundabout = true;
     center = ring.center;
     junctionNodes = ring.nodes;
-    notes.push('Found a roundabout.');
+    notes.push(t('Found a roundabout.', 'Dönel kavşak bulundu.'));
   } else {
     // A junction node is where three or more road branches meet.
     const degree = new Map<number, number>();
@@ -107,12 +108,12 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
     const candidates = [...degree].filter(([id, d]) => d >= 3 && nodes.has(id)).map(([id]) => id);
     const nearest = candidates.sort((a, b) => dist(at(a), { x: 0, y: 0 }) - dist(at(b), { x: 0, y: 0 }))[0];
     if (nearest === undefined || dist(at(nearest), { x: 0, y: 0 }) > SEARCH_RADIUS) {
-      return { error: 'No junction within 80 m of that point. Try a point right on a junction.' };
+      return { error: t('No junction within 80 m of that point. Try a point right on a junction.', 'Bu noktanın 80 m yakınında kavşak yok. Tam bir kavşağın üzerindeki bir noktayı deneyin.') };
     }
     const cluster = candidates.filter((id) => dist(at(id), at(nearest)) <= CLUSTER_RADIUS);
     junctionNodes = new Set(cluster);
     center = cluster.reduce((c, id) => ({ x: c.x + at(id).x / cluster.length, y: c.y + at(id).y / cluster.length }), { x: 0, y: 0 });
-    if (cluster.length > 1) notes.push(`Treated ${cluster.length} nearby crossing points as one junction.`);
+    if (cluster.length > 1) notes.push(t(`Treated ${cluster.length} nearby crossing points as one junction.`, `Yakındaki ${cluster.length} kesişme noktası tek kavşak sayıldı.`));
   }
 
   // Every road branch leaving the junction.
@@ -136,11 +137,11 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
   // A divided road shows up as two one-way branches side by side: merge anything closer than MIN_GAP.
   const legs = mergeBranches(branches, notes);
   const usable = legs.filter((l) => l.lanesIn + l.lanesOut > 0);
-  if (usable.length < 2) return { error: 'Found fewer than two usable roads here.' };
+  if (usable.length < 2) return { error: t('Found fewer than two usable roads here.', 'Burada kullanılabilir ikiden az yol bulundu.') };
   let kept = usable;
   if (usable.length > MAX_LEGS) {
     kept = [...usable].sort((a, b) => b.rank - a.rank || b.lanesIn + b.lanesOut - (a.lanesIn + a.lanesOut)).slice(0, MAX_LEGS);
-    notes.push(`Kept the ${MAX_LEGS} most important of ${usable.length} roads.`);
+    notes.push(t(`Kept the ${MAX_LEGS} most important of ${usable.length} roads.`, `${usable.length} yoldan en önemli ${MAX_LEGS} tanesi alındı.`));
   }
   kept.sort((a, b) => a.angle - b.angle);
 
@@ -152,7 +153,7 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
     lanesOut: Math.min(MAX_LANES, l.lanesOut),
     ...(l.name ? { name: l.name } : {}),
   }));
-  if (kept.some((l) => l.lanesIn > MAX_LANES || l.lanesOut > MAX_LANES)) notes.push('Roads with more than 4 lanes each way were narrowed to 4.');
+  if (kept.some((l) => l.lanesIn > MAX_LANES || l.lanesOut > MAX_LANES)) notes.push(t('Roads with more than 4 lanes each way were narrowed to 4.', 'Her yönde 4’ten fazla şeridi olan yollar 4 şeride indirildi.'));
 
   // Control: a roundabout, signals at or right by the junction, priority for a clearly bigger road, or none.
   const tagged = (want: (t: Record<string, string>) => boolean) =>
@@ -161,13 +162,13 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
   if (roundabout) control = { type: 'roundabout' };
   else if (tagged((t) => t.highway === 'traffic_signals').length > 0) {
     control = { type: 'signals', phases: autoSignalPlan(legSpecs, 25) };
-    notes.push('Traffic lights found; their timing is a standard two-phase guess.');
+    notes.push(t('Traffic lights found; their timing is a standard two-phase guess.', 'Trafik ışıkları bulundu; süreleri standart iki fazlı bir tahmindir.'));
   } else {
     const top = Math.max(...kept.map((l) => l.rank));
     const major = kept.map((l, i) => ({ l, id: legSpecs[i]!.id })).filter(({ l }) => l.rank === top);
     if (major.length === 2 && kept.some((l) => l.rank < top)) {
       control = { type: 'priority', major: major.map((m) => m.id) };
-      notes.push(`${major[0]!.l.name || 'The main road'} has priority.`);
+      notes.push(major[0]!.l.name ? t(`${major[0]!.l.name} has priority.`, `${major[0]!.l.name} öncelikli.`) : t('The main road has priority.', 'Ana yol öncelikli.'));
     } else control = { type: 'priority', major: [] };
   }
 
@@ -184,11 +185,11 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
     const signalled = t.crossing === 'traffic_signals' || t['crossing:signals'] === 'yes';
     crosswalks.push({ leg: leg.id, type: signalled && control.type === 'signals' ? 'signal' : 'zebra' });
   }
-  if (crosswalks.length) notes.push(`${crosswalks.length} pedestrian crossing${crosswalks.length > 1 ? 's' : ''}.`);
+  if (crosswalks.length) notes.push(t(`${crosswalks.length} pedestrian crossing${crosswalks.length > 1 ? 's' : ''}.`, `${crosswalks.length} yaya geçidi.`));
 
   const scenario: Scenario = {
     version: 1,
-    name: kept.map((l) => l.name).filter(Boolean).slice(0, 2).join(' / ') || 'Imported junction',
+    name: kept.map((l) => l.name).filter(Boolean).slice(0, 2).join(' / ') || t('Imported junction', 'İçe aktarılan kavşak'),
     driveSide: driveSideAt(point.lat, point.lon),
     seed: 1,
     legs: legSpecs,
@@ -197,7 +198,7 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
     demand: { vehicles: estimateDemand(kept, legSpecs), pedestrians: legSpecs.map((l) => ({ leg: l.id, pedPerHour: 120 })) },
     source: { kind: 'osm', lat: point.lat, lon: point.lon },
   };
-  notes.push('Traffic volumes are estimated from road types: adjust them in the Traffic table.');
+  notes.push(t('Traffic volumes are estimated from road types: adjust them in the Traffic table.', 'Trafik hacimleri yol türlerinden tahmin edildi: Trafik tablosundan ayarlayın.'));
 
   const centerLatLon = { lat: point.lat + center.y / 110540, lon: point.lon + center.x / (111320 * k) };
   const imported: ImportedLeg[] = kept.map((l, i) => ({ id: legSpecs[i]!.id, name: l.name, highway: l.highway, angle: legSpecs[i]!.angle, lanesIn: legSpecs[i]!.lanesIn, lanesOut: legSpecs[i]!.lanesOut }));
@@ -289,7 +290,7 @@ function mergeBranches(branches: Branch[], notes: string[]): MergedLeg[] {
       name: g.map((b) => b.way.tags!.name ?? b.way.tags!.ref ?? '').find((n) => n) ?? '',
     };
   });
-  if (merged) notes.push(`Merged ${merged} pair${merged > 1 ? 's' : ''} of road pieces running side by side (divided roads).`);
+  if (merged) notes.push(t(`Merged ${merged} pair${merged > 1 ? 's' : ''} of road pieces running side by side (divided roads).`, `Yan yana uzanan ${merged} çift yol parçası birleştirildi (bölünmüş yollar).`));
   return legs;
 }
 

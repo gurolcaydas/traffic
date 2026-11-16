@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { add, scale } from '../../core/geometry';
+import { t } from '../../core/i18n';
 import type { Network } from '../../network/network';
 import type { Camera, Renderer } from '../../render/Renderer';
 import { legColor } from '../../render/theme';
@@ -33,18 +34,18 @@ export function LegLabels({ renderer, network }: { renderer: Renderer | null; ne
             className={`leg-label ${selected === leg.id ? 'selected' : ''}`}
             style={{ left: cam.x + p.x * cam.scale, top: cam.y - p.y * cam.scale }}
             onClick={() => selectLeg(selected === leg.id ? null : leg.id)}
-            title={`Edit leg ${leg.id}`}
+            title={t(`Edit leg ${leg.id}`, `${leg.id} numaralı yolu düzenle`)}
           >
             <span className="leg-badge" style={{ background: legColor(i) }}>
               {leg.id}
             </span>
             <span className="leg-meta">
               {leg.name && <span className="leg-name">{leg.name} · </span>}
-              <span className="num">{inflow}</span> veh/h
+              <span className="num">{inflow}</span> {t('veh/h', 'araç/sa')}
               {queue > 0 && (
                 <>
                   {' · '}
-                  <span className={queue >= 15 ? 'num queue-bad' : 'num'}>{queue}</span> queued
+                  <span className={queue >= 15 ? 'num queue-bad' : 'num'}>{queue}</span> {t('queued', 'kuyrukta')}
                 </>
               )}
             </span>

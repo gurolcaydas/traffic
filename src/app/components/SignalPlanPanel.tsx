@@ -1,3 +1,4 @@
+import { t } from '../../core/i18n';
 import { legColor } from '../../render/theme';
 import {
   addPhase,
@@ -12,10 +13,22 @@ import {
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
 
-const PRESETS: Array<{ value: PlanPreset; label: string; title: string }> = [
-  { value: 'pairs', label: 'Opposite pairs', title: 'Opposite legs go together; turns give way' },
-  { value: 'protected', label: 'Protected turns', title: 'Opposite legs go together, then their far-side turns get their own phase' },
-  { value: 'split', label: 'One leg at a time', title: 'Each leg gets its own phase: no conflicts, long waits' },
+const PRESETS: Array<{ value: PlanPreset; label: () => string; title: () => string }> = [
+  {
+    value: 'pairs',
+    label: () => t('Opposite pairs', 'Karşılıklı çiftler'),
+    title: () => t('Opposite legs go together; turns give way', 'Karşılıklı yollar birlikte geçer; dönenler yol verir'),
+  },
+  {
+    value: 'protected',
+    label: () => t('Protected turns', 'Korumalı dönüşler'),
+    title: () => t('Opposite legs go together, then their far-side turns get their own phase', 'Karşılıklı yollar birlikte geçer, ardından karşıya dönüşler kendi fazını alır'),
+  },
+  {
+    value: 'split',
+    label: () => t('One leg at a time', 'Her yol ayrı'),
+    title: () => t('Each leg gets its own phase: no conflicts, long waits', 'Her yolun kendi fazı var: çakışma yok, bekleme uzun'),
+  },
 ];
 
 /** Phase-by-phase signal plan: green time, which movements go, which crossings walk. */
@@ -33,16 +46,16 @@ export function SignalPlanPanel() {
   return (
     <section className="panel">
       <header className="panel-head">
-        <h2>Signal plan</h2>
+        <h2>{t('Signal plan', 'Sinyal planı')}</h2>
         <span className="hint">
-          Cycle <span className="num">{cycle}</span>s
+          {t('Cycle', 'Devre')} <span className="num">{cycle}</span>s
         </span>
       </header>
 
       <div className="chips">
         {PRESETS.map((p) => (
-          <button key={p.value} className="chip" title={p.title} onClick={() => edit(`Signals: ${p.label.toLowerCase()}`, (d) => applyPlanPreset(d, p.value))}>
-            {p.label}
+          <button key={p.value} className="chip" title={p.title()} onClick={() => edit(`${t('Signals', 'Işıklar')}: ${p.label().toLocaleLowerCase()}`, (d) => applyPlanPreset(d, p.value))}>
+            {p.label()}
           </button>
         ))}
       </div>
@@ -53,19 +66,21 @@ export function SignalPlanPanel() {
         return (
           <div key={i} className={`phase ${active ? `active ${clock?.stage}` : ''}`}>
             <div className="phase-head">
-              <strong>Phase {i + 1}</strong>
+              <strong>
+                {t('Phase', 'Faz')} {i + 1}
+              </strong>
               <input
                 type="range"
                 min={5}
                 max={60}
                 step={5}
                 value={phase.green}
-                aria-label={`Phase ${i + 1} green seconds`}
-                onChange={(e) => edit(`Phase ${i + 1}: ${e.target.value}s green`, (d) => setPhaseGreen(d, i, Number(e.target.value)))}
+                aria-label={t(`Phase ${i + 1} green seconds`, `Faz ${i + 1} yeşil süresi (sn)`)}
+                onChange={(e) => edit(t(`Phase ${i + 1}: ${e.target.value}s green`, `Faz ${i + 1}: ${e.target.value} sn yeşil`), (d) => setPhaseGreen(d, i, Number(e.target.value)))}
               />
               <span className="num">{phase.green}s</span>
               {phases.length > 1 && (
-                <button className="link danger" onClick={() => edit(`Removed phase ${i + 1}`, (d) => removePhase(d, i))} aria-label={`Remove phase ${i + 1}`}>
+                <button className="link danger" onClick={() => edit(t(`Removed phase ${i + 1}`, `Faz ${i + 1} kaldırıldı`), (d) => removePhase(d, i))} aria-label={t(`Remove phase ${i + 1}`, `Faz ${i + 1} kaldır`)}>
                   ✕
                 </button>
               )}
@@ -86,7 +101,7 @@ export function SignalPlanPanel() {
                           className={`chip tiny ${on ? 'on' : ''}`}
                           aria-pressed={on}
                           title={`${from.id} → ${to.id}`}
-                          onClick={() => edit(`Phase ${i + 1}: ${on ? 'stop' : 'run'} ${from.id}→${to.id}`, (d) => toggleMovementInPhase(d, i, { from: from.id, to: to.id }))}
+                          onClick={() => edit(`${t('Phase', 'Faz')} ${i + 1}: ${on ? t('stop', 'durdur') : t('run', 'geçir')} ${from.id}→${to.id}`, (d) => toggleMovementInPhase(d, i, { from: from.id, to: to.id }))}
                         >
                           →{to.id}
                         </button>
@@ -106,8 +121,8 @@ export function SignalPlanPanel() {
                         key={c.leg}
                         className={`chip tiny ${on ? 'on' : ''}`}
                         aria-pressed={on}
-                        title={`Pedestrians cross leg ${c.leg}`}
-                        onClick={() => edit(`Phase ${i + 1}: ${on ? 'stop' : 'walk'} crossing ${c.leg}`, (d) => togglePedInPhase(d, i, c.leg))}
+                        title={t(`Pedestrians cross leg ${c.leg}`, `Yayalar ${c.leg} numaralı yolu geçer`)}
+                        onClick={() => edit(`${t('Phase', 'Faz')} ${i + 1}: ${on ? t(`stop crossing ${c.leg}`, `${c.leg} geçidini durdur`) : t(`walk crossing ${c.leg}`, `${c.leg} geçidinde yürü`)}`, (d) => togglePedInPhase(d, i, c.leg))}
                       >
                         ✕{c.leg}
                       </button>
@@ -120,8 +135,8 @@ export function SignalPlanPanel() {
         );
       })}
 
-      <button className="btn" onClick={() => edit('Added a phase', addPhase)}>
-        + Add phase
+      <button className="btn" onClick={() => edit(t('Added a phase', 'Faz eklendi'), addPhase)}>
+        + {t('Add phase', 'Faz ekle')}
       </button>
     </section>
   );

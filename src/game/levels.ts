@@ -1,3 +1,4 @@
+import { t } from '../core/i18n';
 import type { LegSpec, Scenario, VehicleDemand } from '../core/types';
 import { PATTERNS } from '../scenarios/patterns';
 import { autoSignalPlan } from '../scenarios/setup';
@@ -29,10 +30,21 @@ const cross = (lanes = 1) => [leg('1', 0, lanes), leg('2', 90, lanes), leg('3', 
 export const LEVELS: Level[] = [
   {
     id: 'main-street',
-    title: 'Main street',
-    brief:
-      'Mill Road carries most of the town (legs 1 and 3), but the junction with two quiet side streets has no signs, so everyone gives way to the right. Main-road drivers keep stopping for the odd car from a side street, and the queues reach the bakery.',
-    hint: 'Most traffic is on one road. Who should have to give way?',
+    get title() {
+      return t('Main street', 'Ana cadde');
+    },
+    get brief() {
+      return t(
+        'Mill Road carries most of the town (legs 1 and 3), but the junction with two quiet side streets has no signs, so everyone gives way to the right. Main-road drivers keep stopping for the odd car from a side street, and the queues reach the bakery.',
+        'Değirmen Yolu kasabanın trafiğinin çoğunu taşıyor (1 ve 3 numaralı yollar), ama iki sakin yan sokakla kesiştiği kavşakta hiç levha yok; bu yüzden herkes sağdan gelene yol veriyor. Ana yoldaki sürücüler yan sokaktan gelen tek tük araç için durup duruyor ve kuyruk fırına kadar uzanıyor.',
+      );
+    },
+    get hint() {
+      return t(
+        'Most traffic is on one road. Who should have to give way?',
+        'Trafiğin çoğu tek bir yolda. Kim yol vermeli?',
+      );
+    },
     scenario: base(
       'Main street',
       cross(1),
@@ -50,10 +62,21 @@ export const LEVELS: Level[] = [
   },
   {
     id: 'room-to-turn',
-    title: 'Room to turn',
-    brief:
-      'These lights should cope, but one lane each way means a single driver waiting to turn left holds up everyone behind. Drivers are furious. The council will pay for some widening.',
-    hint: 'A second lane lets through traffic pass a waiting turner. The signal plan has presets too.',
+    get title() {
+      return t('Room to turn', 'Dönecek yer');
+    },
+    get brief() {
+      return t(
+        'These lights should cope, but one lane each way means a single driver waiting to turn left holds up everyone behind. Drivers are furious. The council will pay for some widening.',
+        'Bu ışıklar trafiği kaldırmalı, ama her yönde tek şerit olunca sola dönmek için bekleyen tek bir sürücü arkasındaki herkesi tutuyor. Sürücüler çok öfkeli. Belediye biraz genişletmenin parasını ödeyecek.',
+      );
+    },
+    get hint() {
+      return t(
+        'A second lane lets through traffic pass a waiting turner. The signal plan has presets too.',
+        'İkinci bir şerit, düz gidenlerin dönmeyi bekleyen aracı geçmesini sağlar. Sinyal planının hazır ayarları da var.',
+      );
+    },
     scenario: base(
       'Room to turn',
       cross(1),
@@ -71,10 +94,21 @@ export const LEVELS: Level[] = [
   },
   {
     id: 'rush-hour',
-    title: 'Rush hour',
-    brief:
-      'Quiet most of the day, but every morning the whole suburb drives into town along leg 1, and every evening back out again. Judged on the busiest three hours.',
-    hint: 'At a roundabout, nobody waits for a red light that nobody is using.',
+    get title() {
+      return t('Rush hour', 'Yoğun saat');
+    },
+    get brief() {
+      return t(
+        'Quiet most of the day, but every morning the whole suburb drives into town along leg 1, and every evening back out again. Judged on the busiest three hours.',
+        'Günün çoğunda sakin, ama her sabah bütün banliyö 1 numaralı yoldan şehre giriyor, her akşam da geri çıkıyor. En yoğun üç saate göre değerlendirilir.',
+      );
+    },
+    get hint() {
+      return t(
+        'At a roundabout, nobody waits for a red light that nobody is using.',
+        'Dönel kavşakta kimse, kimsenin kullanmadığı bir kırmızı ışıkta beklemez.',
+      );
+    },
     scenario: {
       ...base('Rush hour', cross(1), even(cross(1), 420), { type: 'priority', major: [] }),
       demand: { vehicles: even(cross(1), 420), pedestrians: [], pattern: PATTERNS.commuter!.make('1') },
@@ -85,10 +119,21 @@ export const LEVELS: Level[] = [
   },
   {
     id: 'school-run',
-    title: 'School run',
-    brief:
-      'The primary school is on leg 2. Its zebra crossings must stay, and children must not wait long to cross. Shops line legs 1 and 3, so those roads cannot be widened.',
-    hint: 'Signalised crossings give children a guaranteed turn. A side road keeps turning cars away from the crossings.',
+    get title() {
+      return t('School run', 'Okul saati');
+    },
+    get brief() {
+      return t(
+        'The primary school is on leg 2. Its zebra crossings must stay, and children must not wait long to cross. Shops line legs 1 and 3, so those roads cannot be widened.',
+        'İlkokul 2 numaralı yolda. Çizgili yaya geçitleri kalmalı ve çocuklar karşıya geçmek için uzun beklememeli. 1 ve 3 numaralı yollar dükkânlarla çevrili, bu yüzden genişletilemez.',
+      );
+    },
+    get hint() {
+      return t(
+        'Signalised crossings give children a guaranteed turn. A side road keeps turning cars away from the crossings.',
+        'Işıklı yaya geçitleri çocuklara kesin bir geçiş sırası verir. Serbest dönüş yolu, dönen araçları yaya geçitlerinden uzak tutar.',
+      );
+    },
     scenario: {
       ...base('School run', [leg('1', 0), leg('2', 90), leg('3', 180)], even([leg('1', 0), leg('2', 90), leg('3', 180)], 280), { type: 'priority', major: ['1', '3'] }),
       crosswalks: [{ leg: '1', type: 'zebra' }, { leg: '2', type: 'zebra' }, { leg: '3', type: 'zebra' }],
@@ -108,9 +153,21 @@ export const LEVELS: Level[] = [
   },
   {
     id: 'five-ways',
-    title: 'Five ways',
-    brief: 'Five roads meet at odd angles and everyone gives way to the right. Locals call it "the knot". Untie it.',
-    hint: 'Signals with five phases means a long wait for everyone.',
+    get title() {
+      return t('Five ways', 'Beş yol');
+    },
+    get brief() {
+      return t(
+        'Five roads meet at odd angles and everyone gives way to the right. Locals call it "the knot". Untie it.',
+        'Beş yol tuhaf açılarla buluşuyor ve herkes sağdan gelene yol veriyor. Mahalleli buraya "düğüm" diyor. Çözün onu.',
+      );
+    },
+    get hint() {
+      return t(
+        'Signals with five phases means a long wait for everyone.',
+        'Beş fazlı ışıklar herkes için uzun bekleme demektir.',
+      );
+    },
     scenario: base('Five ways', [leg('1', 0), leg('2', 70), leg('3', 145), leg('4', 215), leg('5', 290)], even([leg('1', 0), leg('2', 70), leg('3', 145), leg('4', 215), leg('5', 290)], 300), {
       type: 'priority',
       major: [],
@@ -121,10 +178,21 @@ export const LEVELS: Level[] = [
   },
   {
     id: 'stadium-night',
-    title: 'Stadium night',
-    brief:
-      'The stadium is on leg 2. Before kick-off everyone arrives at once; after the final whistle, everyone leaves at once. The city has finally agreed to spend real money.',
-    hint: 'Straight-through traffic on the other road does not need to wait for the crowd at all.',
+    get title() {
+      return t('Stadium night', 'Maç gecesi');
+    },
+    get brief() {
+      return t(
+        'The stadium is on leg 2. Before kick-off everyone arrives at once; after the final whistle, everyone leaves at once. The city has finally agreed to spend real money.',
+        'Stadyum 2 numaralı yolda. Maç öncesi herkes aynı anda geliyor; son düdükten sonra herkes aynı anda ayrılıyor. Belediye sonunda ciddi para harcamayı kabul etti.',
+      );
+    },
+    get hint() {
+      return t(
+        'Straight-through traffic on the other road does not need to wait for the crowd at all.',
+        'Diğer yoldaki düz giden trafiğin kalabalığı hiç beklemesi gerekmez.',
+      );
+    },
     scenario: {
       ...base('Stadium night', cross(2), even(cross(2), 600), { type: 'signals', phases: autoSignalPlan(cross(2), 25) }),
       demand: { vehicles: even(cross(2), 600), pedestrians: [], pattern: PATTERNS.event!.make('2') },

@@ -1,3 +1,4 @@
+import { t } from '../core/i18n';
 import type { ControlSpec, DriveSide, LegSpec, Scenario, SignalPhase } from '../core/types';
 
 export type Shape = 'cross' | 'skewed' | 't' | 'y' | 'five' | 'six';
@@ -16,12 +17,42 @@ export interface Setup {
 }
 
 export const SHAPES: Record<Shape, { label: string; angles: number[] }> = {
-  cross: { label: 'Crossroad', angles: [0, 90, 180, 270] },
-  skewed: { label: 'Skewed', angles: [0, 65, 180, 245] },
-  t: { label: 'T-junction', angles: [0, 180, 270] },
-  y: { label: 'Y-junction', angles: [90, 210, 330] },
-  five: { label: '5-way', angles: [0, 70, 145, 215, 290] },
-  six: { label: '6-way', angles: [0, 60, 120, 180, 240, 300] },
+  cross: {
+    get label() {
+      return t('Crossroad', 'Dört yol');
+    },
+    angles: [0, 90, 180, 270],
+  },
+  skewed: {
+    get label() {
+      return t('Skewed', 'Eğik');
+    },
+    angles: [0, 65, 180, 245],
+  },
+  t: {
+    get label() {
+      return t('T-junction', 'T kavşak');
+    },
+    angles: [0, 180, 270],
+  },
+  y: {
+    get label() {
+      return t('Y-junction', 'Y kavşak');
+    },
+    angles: [90, 210, 330],
+  },
+  five: {
+    get label() {
+      return t('5-way', '5 yol');
+    },
+    angles: [0, 70, 145, 215, 290],
+  },
+  six: {
+    get label() {
+      return t('6-way', '6 yol');
+    },
+    angles: [0, 60, 120, 180, 240, 300],
+  },
 };
 
 export const DEFAULT_SETUP: Setup = {

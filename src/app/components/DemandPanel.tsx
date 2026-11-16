@@ -1,3 +1,4 @@
+import { t } from '../../core/i18n';
 import { legColor } from '../../render/theme';
 import { PATTERNS } from '../../scenarios/patterns';
 import { useRules } from '../levelRules';
@@ -32,19 +33,19 @@ export function DemandPanel() {
   return (
     <section className="panel">
       <header className="panel-head">
-        <h2>Traffic</h2>
+        <h2>{t('Traffic', 'Trafik')}</h2>
         <span className="hint">
-          <span className="num">{total}</span> veh/h {pattern ? 'at peak' : 'total'}
+          <span className="num">{total}</span> {t('veh/h', 'araç/sa')} {pattern ? t('at peak', 'zirvede') : t('total', 'toplam')}
         </span>
       </header>
 
       {rules.demand && (
       <div className="field">
-        <label>Through the day</label>
+        <label>{t('Through the day', 'Gün boyunca')}</label>
         <Segmented<string>
-          label="Traffic pattern"
+          label={t('Traffic pattern', 'Trafik deseni')}
           value={pattern?.id ?? 'flat'}
-          options={[{ value: 'flat', label: 'Constant', title: 'The table, all day long' }, ...Object.entries(PATTERNS).map(([id, p]) => ({ value: id, label: p.label, title: p.description }))]}
+          options={[{ value: 'flat', label: t('Constant', 'Sabit'), title: t('The table, all day long', 'Tablodaki trafik, gün boyu') }, ...Object.entries(PATTERNS).map(([id, p]) => ({ value: id, label: p.label, title: p.description }))]}
           onChange={(id) => setPattern(id === 'flat' ? null : id)}
         />
       </div>
@@ -52,7 +53,9 @@ export function DemandPanel() {
 
       {pattern && preset && (
         <>
-          <p className="hint">{preset.description} The table below is the peak-hour traffic.</p>
+          <p className="hint">
+            {preset.description} {t('The table below is the peak-hour traffic.', 'Aşağıdaki tablo zirve saatin trafiğidir.')}
+          </p>
           {preset.tidal && rules.demand && (
             <div className="field inline-field">
               <label>{preset.centreLabel}</label>
@@ -78,7 +81,7 @@ export function DemandPanel() {
       <table className="od">
         <thead>
           <tr>
-            <th className="corner">from \ to</th>
+            <th className="corner">{t('from \\ to', 'nereden \\ nereye')}</th>
             {legs.map((l, j) => (
               <th key={l.id}>
                 <Badge i={j} id={l.id} />
@@ -97,13 +100,13 @@ export function DemandPanel() {
                 to.id === from.id ? (
                   <td key={to.id} className="diag" />
                 ) : (
-                  <td key={to.id} className={banned(from.id, to.id) ? 'banned' : ''} title={banned(from.id, to.id) ? 'Turn banned: these trips divert elsewhere' : undefined}>
+                  <td key={to.id} className={banned(from.id, to.id) ? 'banned' : ''} title={banned(from.id, to.id) ? t('Turn banned: these trips divert elsewhere', 'Dönüş yasak: bu yolculuklar başka yoldan gider') : undefined}>
                     <input
                       type="number"
                       min={0}
                       step={10}
                       readOnly={!rules.demand}
-                      aria-label={`Vehicles per hour from ${from.id} to ${to.id}`}
+                      aria-label={t(`Vehicles per hour from ${from.id} to ${to.id}`, `${from.id} yolundan ${to.id} yoluna saatte araç`)}
                       value={value(from.id, to.id)}
                       onChange={(e) => setVeh(from.id, to.id, Math.max(0, Number(e.target.value) || 0))}
                     />
@@ -117,7 +120,7 @@ export function DemandPanel() {
       </table>
 
       {!rules.demand ? (
-        <p className="hint">The level's traffic is fixed: change the junction, not the traffic.</p>
+        <p className="hint">{t("The level's traffic is fixed: change the junction, not the traffic.", 'Bölümün trafiği sabittir: trafiği değil, kavşağı değiştirin.')}</p>
       ) : (
       <div className="row gap">
         <button className="btn" onClick={() => scaleDemand(0.8)}>
@@ -126,13 +129,13 @@ export function DemandPanel() {
         <button className="btn" onClick={() => scaleDemand(1.25)}>
           +25%
         </button>
-        <span className="hint">Applies live: watch the queues react.</span>
+        <span className="hint">{t('Applies live: watch the queues react.', 'Anında uygulanır: kuyrukların tepkisini izleyin.')}</span>
       </div>
       )}
 
       {scenario.crosswalks.length > 0 && (
         <div className="field">
-          <label>Pedestrians per hour, per crossing</label>
+          <label>{t('Pedestrians per hour, per crossing', 'Geçit başına saatte yaya')}</label>
           <div className="ped-grid">
             {scenario.crosswalks.map((c) => {
               const i = legs.findIndex((l) => l.id === c.leg);
@@ -144,7 +147,7 @@ export function DemandPanel() {
                     min={0}
                     step={10}
                     readOnly={!rules.demand}
-                    aria-label={`Pedestrians per hour crossing leg ${c.leg}`}
+                    aria-label={t(`Pedestrians per hour crossing leg ${c.leg}`, `${c.leg} numaralı yolu saatte geçen yaya`)}
                     value={demand.pedestrians.find((p) => p.leg === c.leg)?.pedPerHour ?? 0}
                     onChange={(e) => setPed(c.leg, Math.max(0, Number(e.target.value) || 0))}
                   />

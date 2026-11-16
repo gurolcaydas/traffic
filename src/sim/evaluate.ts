@@ -1,5 +1,6 @@
 // Fair, repeatable testing of a design: run it headless several times with different random
 // traffic, and compare two designs run for run on exactly the same traffic.
+import { t } from '../core/i18n';
 import type { DemandPattern, Scenario } from '../core/types';
 import { busiestWindow } from '../scenarios/patterns';
 import { levelOfService, type Los } from './metrics';
@@ -23,9 +24,24 @@ export type TestWindow = 'peak' | 'day';
 export const PEAK_HOURS = 3;
 
 export const TEST_PLANS = {
-  quick: { label: 'Quick', runs: 4, minutes: 15 },
-  standard: { label: 'Standard', runs: 6, minutes: 30 },
-  thorough: { label: 'Thorough', runs: 10, minutes: 60 },
+  quick: {
+    get label() {
+      return t('Quick', 'Hızlı');
+    },
+    runs: 4, minutes: 15,
+  },
+  standard: {
+    get label() {
+      return t('Standard', 'Standart');
+    },
+    runs: 6, minutes: 30,
+  },
+  thorough: {
+    get label() {
+      return t('Thorough', 'Kapsamlı');
+    },
+    runs: 10, minutes: 60,
+  },
 } as const;
 
 export type TestLength = keyof typeof TEST_PLANS;

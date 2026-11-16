@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { t } from '../../core/i18n';
 import { saveDesign } from '../../scenarios/storage';
 import { useApp } from '../store';
 
@@ -7,7 +8,7 @@ export function ReplaceDialog() {
   const pending = useApp((s) => s.pendingReplace);
   const scenario = useApp((s) => s.scenario);
   const { closeReplace, markSaved } = useApp.getState();
-  const [name, setName] = useState('My junction');
+  const [name, setName] = useState(() => t('My junction', 'Kavşağım'));
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     if (!pending) return;
@@ -27,28 +28,37 @@ export function ReplaceDialog() {
     <div className="overlay" role="alertdialog" aria-modal="true" aria-labelledby="replace-title" onClick={closeReplace}>
       <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
         <h2 id="replace-title">{pending.what}?</h2>
-        <p>This replaces your current junction. Your changes to it aren't saved yet and will be lost.</p>
+        <p>
+          {t(
+            "This replaces your current junction. Your changes to it aren't saved yet and will be lost.",
+            'Bu işlem mevcut kavşağınızın yerine geçer. Değişiklikleriniz henüz kaydedilmedi ve kaybolacak.',
+          )}
+        </p>
         <div className="row gap">
-          <input className="text" aria-label="Name to save it as" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+          <input className="text" aria-label={t('Name to save it as', 'Kaydedilecek ad')} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
           <button
             className="btn primary"
             autoFocus
             onClick={() => {
-              if (!saveDesign(name.trim() || 'My junction', scenario)) return setFailed(true);
+              if (!saveDesign(name.trim() || t('My junction', 'Kavşağım'), scenario)) return setFailed(true);
               markSaved();
               go();
             }}
           >
-            Save, then continue
+            {t('Save, then continue', 'Kaydet ve devam et')}
           </button>
         </div>
-        {failed && <p className="alert">This browser won't store designs (private window?). Export it from My designs instead.</p>}
+        {failed && (
+          <p className="alert">
+            {t("This browser won't store designs (private window?). Export it from My designs instead.", 'Bu tarayıcı tasarımları saklamıyor (gizli pencere mi?). Bunun yerine Tasarımlarım’dan dışa aktarın.')}
+          </p>
+        )}
         <div className="row gap confirm-actions">
           <button className="btn danger" onClick={go}>
-            Continue without saving
+            {t('Continue without saving', 'Kaydetmeden devam et')}
           </button>
           <button className="link" onClick={closeReplace}>
-            Cancel
+            {t('Cancel', 'İptal')}
           </button>
         </div>
       </div>

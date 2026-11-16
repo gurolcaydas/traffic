@@ -1,5 +1,6 @@
 // Talking to OpenStreetMap's public services: Nominatim to find a place, Overpass to read the roads.
 // Both are free, shared services: we ask only when the player asks, one request at a time.
+import { t } from '../core/i18n';
 import { ROAD_FILTER, SEARCH_RADIUS, type OsmElement } from './convert';
 
 export interface Place {
@@ -25,7 +26,7 @@ export function parsePlace(input: string): Place | null {
 export async function searchPlaces(query: string, signal?: AbortSignal): Promise<Place[]> {
   const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { signal, headers: { Accept: 'application/json' } });
-  if (!res.ok) throw new Error(res.status === 429 ? 'The place search is busy. Wait a few seconds and try again.' : `Place search failed (${res.status}).`);
+  if (!res.ok) throw new Error(res.status === 429 ? t('The place search is busy. Wait a few seconds and try again.', 'Yer arama servisi meşgul. Birkaç saniye bekleyip yeniden deneyin.') : t(`Place search failed (${res.status}).`, `Yer araması başarısız oldu (${res.status}).`));
   const rows = (await res.json()) as Array<{ display_name: string; lat: string; lon: string }>;
   return rows.map((r) => ({ label: r.display_name, lat: Number(r.lat), lon: Number(r.lon) }));
 }
@@ -40,7 +41,7 @@ export async function fetchRoads(place: Place, signal?: AbortSignal, onAttempt?:
     `[out:json][timeout:25];` +
     `way(around:${r},${place.lat},${place.lon})[highway~"^(${ROAD_FILTER})$"];(._;>;);out body;` +
     `node(around:${r},${place.lat},${place.lon})[highway~"^(traffic_signals|crossing|stop|give_way)$"];out body;`;
-  let lastError = 'Could not reach OpenStreetMap.';
+  let lastError = t('Could not reach OpenStreetMap.', 'OpenStreetMap’e ulaşılamadı.');
   for (let i = 0; i < OVERPASS.length; i++) {
     onAttempt?.(i);
     try {
@@ -51,10 +52,12 @@ export async function fetchRoads(place: Place, signal?: AbortSignal, onAttempt?:
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       });
       if (res.ok) return ((await res.json()) as { elements: OsmElement[] }).elements;
-      lastError = res.status === 429 || res.status >= 500 ? 'OpenStreetMap servers are busy right now. Try again in a minute.' : `OpenStreetMap request failed (${res.status}).`;
+      lastError = res.status === 429 || res.status >= 500 
+          ? t('OpenStreetMap servers are busy right now. Try again in a minute.', 'OpenStreetMap sunucuları şu an meşgul. Bir dakika sonra yeniden deneyin.')
+          : t(`OpenStreetMap request failed (${res.status}).`, `OpenStreetMap isteği başarısız oldu (${res.status}).`);
     } catch (e) {
       if (signal?.aborted) throw e;
-      lastError = 'Could not reach OpenStreetMap. Check your connection, or try again in a minute.';
+      lastError = t('Could not reach OpenStreetMap. Check your connection, or try again in a minute.', 'OpenStreetMap’e ulaşılamadı. Bağlantınızı kontrol edin ya da bir dakika sonra yeniden deneyin.');
     }
   }
   throw new Error(lastError);

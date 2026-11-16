@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { t } from '../core/i18n';
 import type { Scenario } from '../core/types';
 import type { MetricsSnapshot } from '../sim/metrics';
 import type { SignalClock } from '../sim/signals';
@@ -217,7 +218,7 @@ export const useApp = create<AppState>((set, get) => ({
     change(draft);
     const m = get().metrics;
     // Keep the older baseline if the last change hasn't run long enough to judge.
-    const baseline = m && m.window >= MIN_BASELINE_WINDOW ? { label: get().lastEdit ?? 'Before', metrics: m } : get().baseline;
+    const baseline = m && m.window >= MIN_BASELINE_WINDOW ? { label: get().lastEdit ?? t('Before', 'Önce'), metrics: m } : get().baseline;
     set({
       levelResult: null,
       scenario: draft,
@@ -261,7 +262,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   jumpToHour: (hour) => set({ clockJump: { hour, n: (get().clockJump?.n ?? 0) + 1 }, timeOfDay: hour }),
   selectLeg: (leg) => set({ selectedLeg: leg }),
-  pinDesign: () => set({ pinnedDesign: { scenario: get().scenario, label: get().lastEdit ?? 'Original layout' } }),
+  pinDesign: () => set({ pinnedDesign: { scenario: get().scenario, label: get().lastEdit ?? t('Original layout', 'İlk tasarım') } }),
   setPlaying: (playing) => set({ playing }),
   setSpeed: (speed) => set({ speed }),
   // Restart clears the traffic but keeps the design, so it also becomes the new "original".

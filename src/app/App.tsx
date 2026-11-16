@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useRef, useSyncExternalStore } from 'react';
+import { getLang, subscribeLang, t } from '../core/i18n';
 import { useApp } from './store';
 import { DemandPanel } from './components/DemandPanel';
 import { DesignsPanel } from './components/DesignsPanel';
@@ -20,6 +21,8 @@ export function App() {
   const host = useRef<HTMLDivElement>(null);
   const { renderer, network, resetMetrics } = useSimulation(host);
   const source = useApp((s) => s.scenario.source);
+  // Every component below re-renders with the app, so the whole page follows the language.
+  useSyncExternalStore(subscribeLang, getLang);
 
   return (
     <div className="app">
@@ -28,12 +31,17 @@ export function App() {
         <div className="canvas-host" ref={host} />
         <LegLabels renderer={renderer} network={network} />
         <ShapeEditor renderer={renderer} network={network} />
-        <div className="legend">Click a leg to edit it · car colour = where it's going · scroll to zoom · drag to pan · double-click to fit</div>
+        <div className="legend">
+          {t(
+            "Click a leg to edit it · car colour = where it's going · scroll to zoom · drag to pan · double-click to fit",
+            'Düzenlemek için bir yola tıklayın · araç rengi = gittiği yön · yakınlaştırmak için kaydırın · kaydırmak için sürükleyin · sığdırmak için çift tıklayın',
+          )}
+        </div>
         {source?.kind === 'osm' && (
           <div className="map-attribution">
-            {source.label ? `${source.label.split(',').slice(0, 2).join(',')} · ` : ''}Roads ©{' '}
+            {source.label ? `${source.label.split(',').slice(0, 2).join(',')} · ` : ''}{t('Roads', 'Yollar')} ©{' '}
             <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
-              OpenStreetMap contributors
+              {t('OpenStreetMap contributors', 'OpenStreetMap katkıcıları')}
             </a>
           </div>
         )}

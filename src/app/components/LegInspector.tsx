@@ -1,3 +1,4 @@
+import { t } from '../../core/i18n';
 import type { LegSpec } from '../../core/types';
 import { legColor } from '../../render/theme';
 import { crossingOf, setCrossing, toggleBanned, toggleMajor, type CrossingChoice } from '../../scenarios/edit';
@@ -21,7 +22,7 @@ export function LegInspector() {
   const banned = new Set(leg.banned ?? []);
   const isMajor = scenario.control.type === 'priority' && scenario.control.major.includes(leg.id);
   const update = (label: string, change: (l: LegSpec) => void) =>
-    edit(`Leg ${leg.id}: ${label}`, (d) => change(d.legs.find((l) => l.id === leg.id)!));
+    edit(`${t('Leg', 'Yol')} ${leg.id}: ${label}`, (d) => change(d.legs.find((l) => l.id === leg.id)!));
 
   return (
     <section className="panel inspector">
@@ -30,53 +31,58 @@ export function LegInspector() {
           <span className="leg-badge small" style={{ background: legColor(index) }}>
             {leg.id}
           </span>{' '}
-          Leg {leg.id}
+          {t('Leg', 'Yol')} {leg.id}
         </h2>
         <button className="link" onClick={() => selectLeg(null)}>
-          Done
+          {t('Done', 'Tamam')}
         </button>
       </header>
 
       <div className="two-col">
         <div className="field">
-          <label>Lanes in</label>
+          <label>{t('Lanes in', 'Giriş şeridi')}</label>
           <Segmented
-            label="Lanes in"
+            label={t('Lanes in', 'Giriş şeridi')}
             value={leg.lanesIn}
             options={[0, 1, 2, 3, 4].map((n) => ({ value: n, label: String(n), disabled: !rules.lanes || n > rules.maxLanes(leg.id) }))}
-            onChange={(n) => update(`${n} lanes in`, (l) => (l.lanesIn = n))}
+            onChange={(n) => update(t(`${n} lanes in`, `${n} giriş şeridi`), (l) => (l.lanesIn = n))}
           />
         </div>
         <div className="field">
-          <label>Lanes out</label>
+          <label>{t('Lanes out', 'Çıkış şeridi')}</label>
           <Segmented
-            label="Lanes out"
+            label={t('Lanes out', 'Çıkış şeridi')}
             value={leg.lanesOut}
             options={[0, 1, 2, 3, 4].map((n) => ({ value: n, label: String(n), disabled: !rules.lanes || n > rules.maxLanes(leg.id) }))}
-            onChange={(n) => update(`${n} lanes out`, (l) => (l.lanesOut = n))}
+            onChange={(n) => update(t(`${n} lanes out`, `${n} çıkış şeridi`), (l) => (l.lanesOut = n))}
           />
         </div>
       </div>
 
       {rules.crossings && (
       <div className="field">
-        <label>Pedestrian crossing</label>
+        <label>{t('Pedestrian crossing', 'Yaya geçidi')}</label>
         <Segmented<CrossingChoice>
-          label="Crossing"
+          label={t('Crossing', 'Yaya geçidi')}
           value={crossingOf(scenario, leg.id)}
           options={[
-            { value: 'none', label: 'None', disabled: rules.crossingRequired(leg.id), title: rules.crossingRequired(leg.id) ? 'This crossing must stay' : undefined },
-            { value: 'zebra', label: 'Zebra' },
-            { value: 'signal', label: 'Signalised' },
+            {
+              value: 'none',
+              label: t('None', 'Yok'),
+              disabled: rules.crossingRequired(leg.id),
+              title: rules.crossingRequired(leg.id) ? t('This crossing must stay', 'Bu yaya geçidi kalmalı') : undefined,
+            },
+            { value: 'zebra', label: t('Zebra', 'Çizgili') },
+            { value: 'signal', label: t('Signalised', 'Işıklı') },
           ]}
-          onChange={(c) => edit(`Leg ${leg.id}: ${c === 'none' ? 'no crossing' : `${c} crossing`}`, (d) => setCrossing(d, leg.id, c))}
+          onChange={(c) => edit(`${t('Leg', 'Yol')} ${leg.id}: ${c === 'none' ? t('no crossing', 'yaya geçidi yok') : c === 'zebra' ? t('zebra crossing', 'çizgili yaya geçidi') : t('signal crossing', 'ışıklı yaya geçidi')}`, (d) => setCrossing(d, leg.id, c))}
         />
       </div>
       )}
 
       {rules.bans && (
       <div className="field">
-        <label>Allowed turns from this leg</label>
+        <label>{t('Allowed turns from this leg', 'Bu yoldan izinli dönüşler')}</label>
         <div className="chips">
           {others.map((to) => {
             const ok = !banned.has(to.id);
@@ -85,8 +91,8 @@ export function LegInspector() {
                 key={to.id}
                 className={`chip ${ok ? 'on' : 'off'}`}
                 aria-pressed={ok}
-                title={ok ? `Ban turning into ${to.id}` : `Allow turning into ${to.id}`}
-                onClick={() => edit(`Leg ${leg.id}: ${ok ? 'ban' : 'allow'} turn to ${to.id}`, (d) => toggleBanned(d, leg.id, to.id))}
+                title={ok ? t(`Ban turning into ${to.id}`, `${to.id} yoluna dönüşü yasakla`) : t(`Allow turning into ${to.id}`, `${to.id} yoluna dönüşe izin ver`)}
+                onClick={() => edit(`${t('Leg', 'Yol')} ${leg.id}: ${ok ? t(`ban turn to ${to.id}`, `${to.id} dönüşü yasak`) : t(`allow turn to ${to.id}`, `${to.id} dönüşü serbest`)}`, (d) => toggleBanned(d, leg.id, to.id))}
               >
                 → {to.id}
               </button>
@@ -99,8 +105,8 @@ export function LegInspector() {
       <div className="field toggles">
         {!rules.sideRoadBlocked(leg.id) && (
         <label className="toggle">
-          <input type="checkbox" checked={!!leg.slipLane} onChange={(e) => update(e.target.checked ? 'side road built' : 'side road removed', (l) => (l.slipLane = e.target.checked))} />
-          Side road: turn into the next road without entering the junction
+          <input type="checkbox" checked={!!leg.slipLane} onChange={(e) => update(e.target.checked ? t('side road built', 'serbest dönüş yapıldı') : t('side road removed', 'serbest dönüş kaldırıldı'), (l) => (l.slipLane = e.target.checked))} />
+          {t('Side road: turn into the next road without entering the junction', 'Serbest dönüş: kavşağa girmeden yandaki yola dön')}
         </label>
         )}
         {!rules.inLevel && canRemoveLeg(scenario) && (
@@ -108,16 +114,16 @@ export function LegInspector() {
             className="link danger"
             onClick={() => {
               selectLeg(null);
-              edit(`Removed road ${leg.id}`, (d) => removeLeg(d, leg.id));
+              edit(t(`Removed road ${leg.id}`, `${leg.id} numaralı yol kaldırıldı`), (d) => removeLeg(d, leg.id));
             }}
           >
-            Remove this road
+            {t('Remove this road', 'Bu yolu kaldır')}
           </button>
         )}
         {scenario.control.type === 'priority' && rules.controls.includes('major') && (
           <label className="toggle">
-            <input type="checkbox" checked={isMajor} onChange={() => edit(`Leg ${leg.id}: ${isMajor ? 'minor' : 'major'} road`, (d) => toggleMajor(d, leg.id))} />
-            Part of the major road (has priority)
+            <input type="checkbox" checked={isMajor} onChange={() => edit(`${t('Leg', 'Yol')} ${leg.id}: ${isMajor ? t('minor road', 'tali yol') : t('major road', 'ana yol')}`, (d) => toggleMajor(d, leg.id))} />
+            {t('Part of the major road (has priority)', 'Ana yolun parçası (önceliği var)')}
           </label>
         )}
       </div>

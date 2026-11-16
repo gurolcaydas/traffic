@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { t } from '../../core/i18n';
 import { MAX_LANES, type LegSpec } from '../../core/types';
 import type { Network } from '../../network/network';
 import type { Camera, Renderer } from '../../render/Renderer';
@@ -11,7 +12,11 @@ const rad = (deg: number) => (deg * Math.PI) / 180;
 
 /** Clicking a road's crossing button steps through these. */
 const NEXT_CROSSING: Record<CrossingChoice, CrossingChoice> = { none: 'zebra', zebra: 'signal', signal: 'none' };
-const CROSSING_TEXT: Record<CrossingChoice, string> = { none: 'no crossing', zebra: 'zebra crossing', signal: 'crossing with lights' };
+const CROSSING_TEXT: Record<CrossingChoice, () => string> = {
+  none: () => t('no crossing', 'yaya geçidi yok'),
+  zebra: () => t('zebra crossing', 'çizgili yaya geçidi'),
+  signal: () => t('crossing with lights', 'ışıklı yaya geçidi'),
+};
 
 /**
  * On-map controls for changing the junction's shape: drag a road's handle to turn it, × to remove
@@ -73,8 +78,8 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
             <button
               className="shape-handle"
               style={{ borderColor: legColor(i) }}
-              aria-label={`Turn road ${leg.id} (now ${Math.round(angle)}°)`}
-              title="Drag to turn this road"
+              aria-label={t(`Turn road ${leg.id} (now ${Math.round(angle)}°)`, `${leg.id} numaralı yolu döndür (şu an ${Math.round(angle)}°)`)}
+              title={t('Drag to turn this road', 'Bu yolu döndürmek için sürükleyin')}
               onPointerDown={(e) => {
                 e.currentTarget.setPointerCapture(e.pointerId);
                 setDrag({ id: leg.id, angle: leg.angle });
@@ -102,7 +107,12 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
               ⟲<span className="num">{Math.round(angle)}°</span>
             </button>
             {canRemoveLeg(scenario) && !drag && (
-              <button className="shape-remove" aria-label={`Remove road ${leg.id}`} title="Remove this road" onClick={() => edit(`Removed road ${leg.id}`, (d) => removeLeg(d, leg.id))}>
+              <button
+                className="shape-remove"
+                aria-label={t(`Remove road ${leg.id}`, `${leg.id} numaralı yolu kaldır`)}
+                title={t('Remove this road', 'Bu yolu kaldır')}
+                onClick={() => edit(t(`Removed road ${leg.id}`, `${leg.id} numaralı yol kaldırıldı`), (d) => removeLeg(d, leg.id))}
+              >
                 ×
               </button>
             )}
@@ -123,9 +133,9 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
               key={`x${leg.id}`}
               className={`shape-crossing ${now}`}
               style={{ left: p.x, top: p.y }}
-              aria-label={`Road ${leg.id}: ${CROSSING_TEXT[now]}. Click for ${CROSSING_TEXT[next]}`}
-              title={`${CROSSING_TEXT[now]} · click for ${CROSSING_TEXT[next]}`}
-              onClick={() => edit(`Road ${leg.id}: ${CROSSING_TEXT[next]}`, (d) => setCrossing(d, leg.id, next))}
+              aria-label={`${t('Road', 'Yol')} ${leg.id}: ${CROSSING_TEXT[now]()}. ${t('Click for', 'Tıklayınca')} ${CROSSING_TEXT[next]()}`}
+              title={`${CROSSING_TEXT[now]()} · ${t('click for', 'tıklayınca')} ${CROSSING_TEXT[next]()}`}
+              onClick={() => edit(`${t('Road', 'Yol')} ${leg.id}: ${CROSSING_TEXT[next]()}`, (d) => setCrossing(d, leg.id, next))}
             >
               🚶{now === 'signal' && <span className="mini">●</span>}
             </button>
@@ -142,12 +152,16 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
             const other = side === 'lanesIn' ? leg.lanesOut : leg.lanesIn;
             // A road keeps at least one lane, in one direction or the other.
             if (n < 0 || n > MAX_LANES || (n === 0 && other === 0)) return null;
-            return () => edit(`Road ${leg.id}: ${n} lane${n === 1 ? '' : 's'} ${side === 'lanesIn' ? 'in' : 'out'}`, (d) => void (d.legs.find((l) => l.id === leg.id)![side] = n));
+            const text =
+              side === 'lanesIn'
+                ? t(`${n} lane${n === 1 ? '' : 's'} in`, `${n} giriş şeridi`)
+                : t(`${n} lane${n === 1 ? '' : 's'} out`, `${n} çıkış şeridi`);
+            return () => edit(`${t('Road', 'Yol')} ${leg.id}: ${text}`, (d) => void (d.legs.find((l) => l.id === leg.id)![side] = n));
           };
           return (
             <div key={`l${leg.id}`} className="shape-lanes" style={{ left: p.x, top: p.y }}>
-              <LaneStepper leg={leg} side="lanesIn" label="In" title="Lanes towards the junction" step={step} />
-              <LaneStepper leg={leg} side="lanesOut" label="Out" title="Lanes away from the junction" step={step} />
+              <LaneStepper leg={leg} side="lanesIn" label={t('In', 'Giriş')} title={t('Lanes towards the junction', 'Kavşağa doğru şeritler')} step={step} />
+              <LaneStepper leg={leg} side="lanesOut" label={t('Out', 'Çıkış')} title={t('Lanes away from the junction', 'Kavşaktan çıkan şeritler')} step={step} />
             </div>
           );
         })}
@@ -159,9 +173,9 @@ export function ShapeEditor({ renderer, network }: { renderer: Renderer | null; 
               key={angle}
               className="shape-add"
               style={{ left: p.x, top: p.y }}
-              aria-label={`Add a road at ${angle}°`}
-              title="Add a road here"
-              onClick={() => edit(`Added a road at ${angle}°`, (d) => void addLeg(d, angle))}
+              aria-label={t(`Add a road at ${angle}°`, `${angle}° açıyla yol ekle`)}
+              title={t('Add a road here', 'Buraya yol ekle')}
+              onClick={() => edit(t(`Added a road at ${angle}°`, `${angle}° açıyla yol eklendi`), (d) => void addLeg(d, angle))}
             >
               +
             </button>
@@ -189,11 +203,11 @@ function LaneStepper({
   return (
     <div className="lane-stepper" title={title}>
       <span className="lane-label">{label}</span>
-      <button aria-label={`Fewer lanes ${label.toLowerCase()} on road ${leg.id}`} disabled={!less} onClick={less ?? undefined}>
+      <button aria-label={t(`Fewer lanes ${label.toLowerCase()} on road ${leg.id}`, `${leg.id} numaralı yolda daha az ${label.toLocaleLowerCase('tr')} şeridi`)} disabled={!less} onClick={less ?? undefined}>
         −
       </button>
       <span className="num">{leg[side]}</span>
-      <button aria-label={`More lanes ${label.toLowerCase()} on road ${leg.id}`} disabled={!more} onClick={more ?? undefined}>
+      <button aria-label={t(`More lanes ${label.toLowerCase()} on road ${leg.id}`, `${leg.id} numaralı yolda daha fazla ${label.toLocaleLowerCase('tr')} şeridi`)} disabled={!more} onClick={more ?? undefined}>
         +
       </button>
     </div>

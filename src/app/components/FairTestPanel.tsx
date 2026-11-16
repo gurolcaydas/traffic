@@ -14,6 +14,7 @@ import {
   type TestLength,
   type TestWindow,
 } from '../../sim/evaluate';
+import { t } from '../../core/i18n';
 import { runFairTest, type FairTestRun } from '../fairTest';
 import { useApp } from '../store';
 import { Segmented } from './Segmented';
@@ -59,9 +60,9 @@ export function FairTestPanel() {
   useEffect(() => () => running.current?.cancel(), []);
 
   const references: Record<ReferenceChoice, { scenario: Scenario; label: string } | null> = {
-    last: beforeLast ? { scenario: beforeLast, label: 'Before last change' } : null,
-    original: { scenario: original, label: 'Original layout' },
-    pinned: pinned ? { scenario: pinned.scenario, label: `Pinned (${pinned.label})` } : null,
+    last: beforeLast ? { scenario: beforeLast, label: t('Before last change', 'Son değişiklikten önce') } : null,
+    original: { scenario: original, label: t('Original layout', 'İlk tasarım') },
+    pinned: pinned ? { scenario: pinned.scenario, label: `${t('Pinned', 'Sabitlenen')} (${pinned.label})` } : null,
   };
   const effective: ReferenceChoice = references[choice] ? choice : beforeLast ? 'last' : 'original';
   const ref = references[effective]!;
@@ -76,7 +77,7 @@ export function FairTestPanel() {
     setProgress(0);
     const reference = { ...ref.scenario, demand: scenario.demand }; // same traffic for both
     const plan = makePlan(length, pattern, testWindow);
-    const span = plan.startHour !== undefined ? `${formatClock(plan.startHour)}–${formatClock(plan.startHour + plan.duration / 3600)}` : `${Math.round(plan.duration / 60)} min`;
+    const span = plan.startHour !== undefined ? `${formatClock(plan.startHour)}–${formatClock(plan.startHour + plan.duration / 3600)}` : `${Math.round(plan.duration / 60)} ${t('min', 'dk')}`;
     const run = runFairTest(reference, scenario, plan, setProgress);
     running.current = run;
     const signalised = (s: Scenario) => s.control.type === 'signals';
@@ -96,7 +97,7 @@ export function FairTestPanel() {
         setProgress(null);
       })
       .catch((e: unknown) => {
-        setError(e instanceof Error ? e.message : 'The test failed to run.');
+        setError(e instanceof Error ? e.message : t('The test failed to run.', 'Test çalıştırılamadı.'));
         setProgress(null);
       });
   };
@@ -110,7 +111,7 @@ export function FairTestPanel() {
   const plan = TEST_PLANS[length];
   const peakStart = pattern ? busiestWindow(pattern, PEAK_HOURS) : 0;
   const runSpan = !pattern
-    ? `${plan.minutes} min`
+    ? `${plan.minutes} ${t('min', 'dk')}`
     : testWindow === 'peak'
       ? `${formatClock(peakStart)}–${formatClock(peakStart + PEAK_HOURS)}`
       : `${formatClock(pattern.startHour)}–${formatClock(pattern.endHour)}`;
@@ -118,38 +119,46 @@ export function FairTestPanel() {
   return (
     <section className="panel">
       <header className="panel-head">
-        <h2>Fair test</h2>
-        <button className="link" onClick={pinDesign} title="Remember the current design to compare against later">
-          Pin this design
+        <h2>{t('Fair test', 'Adil test')}</h2>
+        <button className="link" onClick={pinDesign} title={t('Remember the current design to compare against later', 'Bu tasarımı daha sonra karşılaştırmak için hatırla')}>
+          {t('Pin this design', 'Bu tasarımı sabitle')}
         </button>
       </header>
       <p className="hint">
-        Runs both designs on <strong>exactly the same traffic</strong>, several times with different random traffic, so luck can't decide the result.
+        {t('Runs both designs on ', 'İki tasarımı da ')}
+        <strong>{t('exactly the same traffic', 'tamamen aynı trafikle')}</strong>
+        {t(
+          ", several times with different random traffic, so luck can't decide the result.",
+          ', farklı rastgele trafiklerle birkaç kez çalıştırır; böylece sonucu şans belirlemez.',
+        )}
       </p>
 
       <div className="field">
-        <label>Compare the current design with</label>
+        <label>{t('Compare the current design with', 'Mevcut tasarımı şununla karşılaştır')}</label>
         <Segmented<ReferenceChoice>
-          label="Reference design"
+          label={t('Reference design', 'Karşılaştırılan tasarım')}
           value={effective}
           options={[
-            ...(beforeLast ? [{ value: 'last' as const, label: 'Before last change', title: lastEdit ? `Undo of: ${lastEdit}` : undefined }] : []),
-            { value: 'original' as const, label: 'Original' },
-            ...(pinned ? [{ value: 'pinned' as const, label: 'Pinned', title: pinned.label }] : []),
+            ...(beforeLast ? [{ value: 'last' as const, label: t('Before last change', 'Son değişiklikten önce'), title: lastEdit ? `${t('Undo of', 'Geri alınan')}: ${lastEdit}` : undefined }] : []),
+            { value: 'original' as const, label: t('Original', 'İlk hali') },
+            ...(pinned ? [{ value: 'pinned' as const, label: t('Pinned', 'Sabitlenen'), title: pinned.label }] : []),
           ]}
           onChange={setChoice}
         />
       </div>
 
       <div className="field">
-        <label>Test length</label>
+        <label>{t('Test length', 'Test süresi')}</label>
         <Segmented<TestLength>
-          label="Test length"
+          label={t('Test length', 'Test süresi')}
           value={length}
           options={(Object.keys(TEST_PLANS) as TestLength[]).map((k) => ({
             value: k,
             label: TEST_PLANS[k].label,
-            title: `${TEST_PLANS[k].runs} runs × ${TEST_PLANS[k].minutes} min of traffic per design`,
+            title: t(
+              `${TEST_PLANS[k].runs} runs × ${TEST_PLANS[k].minutes} min of traffic per design`,
+              `Tasarım başına ${TEST_PLANS[k].runs} deneme × ${TEST_PLANS[k].minutes} dk trafik`,
+            ),
           }))}
           onChange={setLength}
         />
@@ -157,13 +166,13 @@ export function FairTestPanel() {
 
       {pattern && (
         <div className="field">
-          <label>Which part of the day</label>
+          <label>{t('Which part of the day', 'Günün hangi bölümü')}</label>
           <Segmented<TestWindow>
-            label="Test window"
+            label={t('Test window', 'Test aralığı')}
             value={testWindow}
             options={[
-              { value: 'peak', label: `Busiest ${PEAK_HOURS} h`, title: `${formatClock(peakStart)}–${formatClock(peakStart + PEAK_HOURS)}` },
-              { value: 'day', label: 'Whole day', title: `${formatClock(pattern.startHour)}–${formatClock(pattern.endHour)}: slower` },
+              { value: 'peak', label: t(`Busiest ${PEAK_HOURS} h`, `En yoğun ${PEAK_HOURS} sa`), title: `${formatClock(peakStart)}–${formatClock(peakStart + PEAK_HOURS)}` },
+              { value: 'day', label: t('Whole day', 'Tüm gün'), title: `${formatClock(pattern.startHour)}–${formatClock(pattern.endHour)}: ${t('slower', 'daha yavaş')}` },
             ]}
             onChange={setTestWindow}
           />
@@ -173,10 +182,12 @@ export function FairTestPanel() {
       {progress === null ? (
         <div className="row gap">
           <button className="btn primary" onClick={start} disabled={sameDesign}>
-            Run test
+            {t('Run test', 'Testi çalıştır')}
           </button>
           <span className="hint">
-            {sameDesign ? 'Nothing to compare: change the design first.' : `${plan.runs} runs of ${runSpan}, both designs`}
+            {sameDesign
+              ? t('Nothing to compare: change the design first.', 'Karşılaştıracak bir şey yok: önce tasarımı değiştirin.')
+              : t(`${plan.runs} runs of ${runSpan}, both designs`, `İki tasarım için ${runSpan} trafikle ${plan.runs} deneme`)}
           </span>
         </div>
       ) : (
@@ -185,7 +196,7 @@ export function FairTestPanel() {
             <div className="progress-fill" style={{ width: `${progress * 100}%` }} />
           </div>
           <button className="link" onClick={cancel}>
-            Cancel
+            {t('Cancel', 'İptal')}
           </button>
         </div>
       )}
@@ -196,13 +207,13 @@ export function FairTestPanel() {
   );
 }
 
-const ROWS: Array<{ key: MetricKey; label: string; unit: string; lowerIsBetter: boolean }> = [
-  { key: 'avgDelay', label: 'Avg delay', unit: 's', lowerIsBetter: true },
-  { key: 'worst15Delay', label: 'Worst 15 min', unit: 's', lowerIsBetter: true },
-  { key: 'throughput', label: 'Throughput', unit: '/h', lowerIsBetter: false },
-  { key: 'worstQueue', label: 'Worst queue', unit: '', lowerIsBetter: true },
-  { key: 'pedWait', label: 'Ped wait', unit: 's', lowerIsBetter: true },
-  { key: 'divertedPerHour', label: 'Diverted', unit: '/h', lowerIsBetter: true },
+const ROWS: Array<{ key: MetricKey; label: () => string; unit: () => string; lowerIsBetter: boolean }> = [
+  { key: 'avgDelay', label: () => t('Avg delay', 'Ort. gecikme'), unit: () => 's', lowerIsBetter: true },
+  { key: 'worst15Delay', label: () => t('Worst 15 min', 'En kötü 15 dk'), unit: () => 's', lowerIsBetter: true },
+  { key: 'throughput', label: () => t('Throughput', 'Geçen araç'), unit: () => t('/h', '/sa'), lowerIsBetter: false },
+  { key: 'worstQueue', label: () => t('Worst queue', 'En uzun kuyruk'), unit: () => '', lowerIsBetter: true },
+  { key: 'pedWait', label: () => t('Ped wait', 'Yaya bekleme'), unit: () => 's', lowerIsBetter: true },
+  { key: 'divertedPerHour', label: () => t('Diverted', 'Yönlendirilen'), unit: () => t('/h', '/sa'), lowerIsBetter: true },
 ];
 
 function Results({ outcome, stale, hasPeds }: { outcome: Outcome; stale: boolean; hasPeds: boolean }) {
@@ -216,27 +227,31 @@ function Results({ outcome, stale, hasPeds }: { outcome: Outcome; stale: boolean
   const delay = diffs.get('avgDelay')!;
   const headline =
     delay.verdict === 'better'
-      ? `Your design cuts delay by ${fmt(-delay.mean)} s (±${fmt(delay.ci)}).`
+      ? t(`Your design cuts delay by ${fmt(-delay.mean)} s (±${fmt(delay.ci)}).`, `Tasarımınız gecikmeyi ${fmt(-delay.mean)} sn azaltıyor (±${fmt(delay.ci)}).`)
       : delay.verdict === 'worse'
-        ? `Your design adds ${fmt(delay.mean)} s of delay (±${fmt(delay.ci)}).`
-        : 'No clear difference in delay: the change is within the noise.';
+        ? t(`Your design adds ${fmt(delay.mean)} s of delay (±${fmt(delay.ci)}).`, `Tasarımınız gecikmeyi ${fmt(delay.mean)} sn artırıyor (±${fmt(delay.ci)}).`)
+        : t('No clear difference in delay: the change is within the noise.', 'Gecikmede belirgin bir fark yok: değişim rastgele dalgalanma içinde.');
 
   return (
     <div className={`fair-result ${stale ? 'stale' : ''}`}>
-      {stale && <p className="hint">The design or traffic has changed since this test. Run it again for current results.</p>}
+      {stale && (
+        <p className="hint">
+          {t('The design or traffic has changed since this test. Run it again for current results.', 'Bu testten sonra tasarım ya da trafik değişti. Güncel sonuç için yeniden çalıştırın.')}
+        </p>
+      )}
       <p className={`verdict ${delay.verdict}`}>{headline}</p>
       <table>
         <thead>
           <tr>
             <th />
             <th>{outcome.referenceLabel}</th>
-            <th>Now</th>
-            <th>Change</th>
+            <th>{t('Now', 'Şimdi')}</th>
+            <th>{t('Change', 'Fark')}</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <th>Grade</th>
+            <th>{t('Grade', 'Not')}</th>
             <td>
               <span className={`los-chip los-${r.los}`}>{r.los}</span>
             </td>
@@ -249,16 +264,16 @@ function Results({ outcome, stale, hasPeds }: { outcome: Outcome; stale: boolean
             const d = diffs.get(row.key)!;
             return (
               <tr key={row.key}>
-                <th>{row.label}</th>
+                <th>{row.label()}</th>
                 <td className="num">
                   {fmt(r[row.key].mean)}
-                  {row.unit}
+                  {row.unit()}
                 </td>
                 <td className="num">
                   {fmt(c[row.key].mean)}
-                  {row.unit}
+                  {row.unit()}
                 </td>
-                <td className={`num delta ${d.verdict === 'better' ? 'good' : d.verdict === 'worse' ? 'bad' : 'same'}`} title="Average change per run, ± its 95% confidence interval">
+                <td className={`num delta ${d.verdict === 'better' ? 'good' : d.verdict === 'worse' ? 'bad' : 'same'}`} title={t('Average change per run, ± its 95% confidence interval', 'Deneme başına ortalama fark, ± %95 güven aralığı')}>
                   {d.mean >= 0 ? '+' : '−'}
                   {fmt(Math.abs(d.mean))} ±{fmt(d.ci)}
                 </td>
@@ -269,11 +284,17 @@ function Results({ outcome, stale, hasPeds }: { outcome: Outcome; stale: boolean
       </table>
       {(r.gridlockRate > 0 || c.gridlockRate > 0) && (
         <p className="hint">
-          Gridlock in {Math.round(r.gridlockRate * 100)}% of runs before, {Math.round(c.gridlockRate * 100)}% now.
+          {t(
+            `Gridlock in ${Math.round(r.gridlockRate * 100)}% of runs before, ${Math.round(c.gridlockRate * 100)}% now.`,
+            `Kilitlenme: önce denemelerin %${Math.round(r.gridlockRate * 100)}'inde, şimdi %${Math.round(c.gridlockRate * 100)}'inde.`,
+          )}
         </p>
       )}
       <p className="hint">
-        {TEST_PLANS[outcome.plan].runs} runs of {outcome.span} each, after a warm-up. ± is the 95% confidence interval.
+        {t(
+          `${TEST_PLANS[outcome.plan].runs} runs of ${outcome.span} each, after a warm-up. ± is the 95% confidence interval.`,
+          `Isınmanın ardından her biri ${outcome.span} süren ${TEST_PLANS[outcome.plan].runs} deneme. ± değeri %95 güven aralığıdır.`,
+        )}
       </p>
     </div>
   );

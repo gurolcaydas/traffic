@@ -1,14 +1,15 @@
+import { t } from '../../core/i18n';
 import type { MetricsSnapshot } from '../../sim/metrics';
 import { legColor } from '../../render/theme';
 import { useApp } from '../store';
 
-export const LOS_TEXT: Record<string, string> = {
-  A: 'Free flow',
-  B: 'Smooth',
-  C: 'Steady',
-  D: 'Getting busy',
-  E: 'At capacity',
-  F: 'Jammed',
+export const LOS_TEXT: Record<string, () => string> = {
+  A: () => t('Free flow', 'Serbest akış'),
+  B: () => t('Smooth', 'Akıcı'),
+  C: () => t('Steady', 'Düzenli'),
+  D: () => t('Getting busy', 'Yoğunlaşıyor'),
+  E: () => t('At capacity', 'Kapasite sınırında'),
+  F: () => t('Jammed', 'Tıkalı'),
 };
 
 /** Metrics need this much simulated time before they mean anything. */
@@ -25,44 +26,47 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
   return (
     <section className="panel" id="flow">
       <header className="panel-head">
-        <h2>How it's flowing</h2>
-        <button className="link" onClick={onReset} title="Start measuring again from now">
-          Reset stats
+        <h2>{t("How it's flowing", 'Trafik akışı')}</h2>
+        <button className="link" onClick={onReset} title={t('Start measuring again from now', 'Ölçümü şimdiden yeniden başlat')}>
+          {t('Reset stats', 'İstatistikleri sıfırla')}
         </button>
       </header>
 
       {!m || m.window < SETTLE ? (
-        <p className="hint">Measuring… give it a few seconds of simulated time.</p>
+        <p className="hint">{t('Measuring… give it a few seconds of simulated time.', 'Ölçülüyor… birkaç saniyelik simülasyon süresi bekleyin.')}</p>
       ) : (
         <>
           <div className="los-row">
-            <div className={`los los-${m.los}`} aria-label={`Level of service ${m.los}`}>
+            <div className={`los los-${m.los}`} aria-label={`${t('Level of service', 'Hizmet düzeyi')} ${m.los}`}>
               {m.los}
             </div>
             <div>
-              <div className="los-text">{m.gridlock ? 'Gridlock' : LOS_TEXT[m.los]}</div>
-              <div className="hint">Level of service, from average delay{scenario.control.type === 'signals' ? ' (signalised)' : ''}</div>
+              <div className="los-text">{m.gridlock ? t('Gridlock', 'Kilitlenme') : LOS_TEXT[m.los]!()}</div>
+              <div className="hint">
+                {t('Level of service, from average delay', 'Ortalama gecikmeye göre hizmet düzeyi')}
+                {scenario.control.type === 'signals' ? t(' (signalised)', ' (ışıklı)') : ''}
+              </div>
             </div>
           </div>
 
-          {m.gridlock && <p className="alert">Queues are spilling off the map. This junction can't cope with this traffic.</p>}
+          {m.gridlock && <p className="alert">{t("Queues are spilling off the map. This junction can't cope with this traffic.", 'Kuyruklar haritanın dışına taşıyor. Bu kavşak bu trafiği kaldıramıyor.')}</p>}
 
           <dl className="stats">
             <div>
-              <dt>Avg delay</dt>
+              <dt>{t('Avg delay', 'Ort. gecikme')}</dt>
               <dd>
                 <span className="num">{fmt(m.avgDelay)}</span> s
               </dd>
             </div>
             <div>
-              <dt>Throughput</dt>
+              <dt>{t('Throughput', 'Geçen araç')}</dt>
               <dd>
-                <span className="num">{Math.round(m.throughputPerHour)}</span> veh/h
+                <span className="num">{Math.round(m.throughputPerHour)}</span> {t('veh/h', 'araç/sa')}
               </dd>
             </div>
             {(scenario.demand.pattern || m.window >= 1800) && (
-              <div title="Average delay in the worst 15 minutes so far: the moment a design has to survive">
-                <dt>Worst 15 min</dt>
+              <div title={t('Average delay in the worst 15 minutes so far: the moment a design has to survive', 'Şimdiye kadarki en kötü 15 dakikadaki ortalama gecikme: tasarımın dayanması gereken an')}>
+                <dt>{t('Worst 15 min', 'En kötü 15 dk')}</dt>
                 <dd>
                   <span className="num">{fmt(m.worst15Delay)}</span> s
                 </dd>
@@ -70,17 +74,17 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
             )}
             {scenario.crosswalks.length > 0 && (
               <div>
-                <dt>Ped wait</dt>
+                <dt>{t('Ped wait', 'Yaya bekleme')}</dt>
                 <dd>
                   <span className="num">{fmt(m.pedAvgWait)}</span> s
                 </dd>
               </div>
             )}
             {m.diverted > 0 && (
-              <div title="Trips whose turn is banned: they had to go another way">
-                <dt>Diverted</dt>
+              <div title={t('Trips whose turn is banned: they had to go another way', 'Dönüşü yasak olan yolculuklar: başka yoldan gitmek zorunda kaldılar')}>
+                <dt>{t('Diverted', 'Yönlendirilen')}</dt>
                 <dd>
-                  <span className="num">{Math.round((m.diverted / m.window) * 3600)}</span> veh/h
+                  <span className="num">{Math.round((m.diverted / m.window) * 3600)}</span> {t('veh/h', 'araç/sa')}
                 </dd>
               </div>
             )}
@@ -94,9 +98,9 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
         <table className="legs">
           <thead>
             <tr>
-              <th>Leg</th>
-              <th>Queue</th>
-              <th className="r">Delay</th>
+              <th>{t('Leg', 'Yol')}</th>
+              <th>{t('Queue', 'Kuyruk')}</th>
+              <th className="r">{t('Delay', 'Gecikme')}</th>
             </tr>
           </thead>
           <tbody>
@@ -108,7 +112,7 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
                   </span>
                 </td>
                 <td>
-                  <div className="bar" title={`${l.queue} queued, max ${l.maxQueue}`}>
+                  <div className="bar" title={t(`${l.queue} queued, max ${l.maxQueue}`, `${l.queue} araç kuyrukta, en çok ${l.maxQueue}`)}>
                     <div className={`bar-fill ${l.queue >= 15 ? 'bad' : ''}`} style={{ width: `${Math.min(100, (l.queue / maxQueue) * 100)}%` }} />
                     <span className="bar-label num">{l.queue}</span>
                   </div>
@@ -146,22 +150,22 @@ function Comparison({ current }: { current: MetricsSnapshot | null }) {
   return (
     <div className="compare">
       <div className="compare-head">
-        <span>Before → after</span>
-        <span className="hint" title="The comparison covers the latest change">
+        <span>{t('Before → after', 'Önce → sonra')}</span>
+        <span className="hint" title={t('The comparison covers the latest change', 'Karşılaştırma son değişikliği kapsar')}>
           {lastEdit}
         </span>
       </div>
       <table>
         <tbody>
           <tr>
-            <th>Grade</th>
+            <th>{t('Grade', 'Not')}</th>
             <td>
               <span className={`los-chip los-${before.los}`}>{before.los}</span>
             </td>
             <td>{ready ? <span className={`los-chip los-${current.los}`}>{current.los}</span> : '…'}</td>
           </tr>
           <tr>
-            <th>Avg delay</th>
+            <th>{t('Avg delay', 'Ort. gecikme')}</th>
             <td className="num">{fmt(before.avgDelay)}s</td>
             <td className="num">
               {ready ? (
@@ -174,7 +178,7 @@ function Comparison({ current }: { current: MetricsSnapshot | null }) {
             </td>
           </tr>
           <tr>
-            <th>Throughput</th>
+            <th>{t('Throughput', 'Geçen araç')}</th>
             <td className="num">{Math.round(before.throughputPerHour)}</td>
             <td className="num">
               {ready ? (
