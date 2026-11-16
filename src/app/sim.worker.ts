@@ -114,5 +114,5 @@ function sendFrame() {
 }
 
 function sendMetrics() {
-  if (sim) post({ type: 'metrics', metrics: sim.getMetrics() });
+  if (sim) post({ type: 'metrics', metrics: sim.getMetrics(), trend: [...sim.trend] });
 }

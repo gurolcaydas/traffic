@@ -326,6 +326,40 @@ describe('Lane changing', () => {
   });
 });
 
+describe('Live trend', () => {
+  it('samples queues and lost time every 5 s, across metric resets, and marks edits', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 400 }));
+    sim.run(60);
+    sim.resetMetrics();
+    sim.run(60);
+    const before = sim.trend.length;
+    expect(before).toBeGreaterThanOrEqual(23);
+    const times = sim.trend.map((s) => s.time);
+    for (let i = 1; i < times.length; i++) expect(times[i]! - times[i - 1]!).toBeCloseTo(5, 0);
+    // Lost time and arrivals only ever grow; the reset in the middle doesn't touch them.
+    for (let i = 1; i < sim.trend.length; i++) {
+      expect(sim.trend[i]!.lost).toBeGreaterThanOrEqual(sim.trend[i - 1]!.lost);
+      expect(sim.trend[i]!.arrived).toBeGreaterThanOrEqual(sim.trend[i - 1]!.arrived);
+    }
+    expect(sim.trend.some((s) => s.edit)).toBe(false);
+    const next = structuredClone(sim.scenario);
+    next.control = twoPhaseSignals(25);
+    sim.applyScenario(next);
+    sim.run(10);
+    expect(sim.trend.filter((s) => s.edit)).toHaveLength(1);
+  });
+
+  it('shows queues growing when demand outstrips the junction', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 900 }));
+    sim.run(600);
+    const q = (from: number, to: number) => {
+      const xs = sim.trend.filter((s) => s.time > from && s.time <= to).map((s) => s.queued);
+      return xs.reduce((a, b) => a + b, 0) / xs.length;
+    };
+    expect(q(480, 600)).toBeGreaterThan(q(120, 240) + 10);
+  });
+});
+
 describe('Roundabouts', () => {
   const ring = (opts: Parameters<typeof crossroad>[0] = {}) => crossroad({ ...opts, control: { type: 'roundabout' } });
 

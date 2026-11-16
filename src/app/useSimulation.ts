@@ -54,7 +54,7 @@ export function useSimulation(host: React.RefObject<HTMLDivElement | null>) {
     w.onmessage = (e: MessageEvent<FromWorker>) => {
       const msg = e.data;
       if (msg.type === 'metrics') {
-        useApp.setState({ metrics: msg.metrics });
+        useApp.setState({ metrics: msg.metrics, trend: msg.trend });
       } else {
         rendererRef.current?.pushFrame(msg);
         const now = performance.now();

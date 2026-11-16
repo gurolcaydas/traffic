@@ -955,6 +955,57 @@ body {
   stroke-dasharray: 2 2;
 }
 
+.trend-chart svg {
+  cursor: crosshair;
+}
+
+.trend-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.trend-badge {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.trend-badge.good {
+  color: var(--good);
+}
+
+.trend-badge.bad {
+  color: var(--bad);
+}
+
+.trend-badge.same {
+  color: var(--text-2);
+}
+
+.trend-chart .edit-mark line {
+  stroke: var(--text-2);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.trend-chart .edit-mark text {
+  fill: var(--text-2);
+  font-size: 9px;
+}
+
+.trend-chart .hover-dot {
+  fill: var(--text);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.trend-chart .now-dot {
+  fill: var(--text);
+}
+
 .chart-legend {
   display: flex;
   gap: 12px;

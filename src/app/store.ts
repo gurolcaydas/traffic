@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { t } from '../core/i18n';
 import type { Scenario } from '../core/types';
 import type { MetricsSnapshot } from '../sim/metrics';
+import type { TrendSample } from '../sim/simulation';
 import type { SignalClock } from '../sim/signals';
 import { DEFAULT_SETUP, buildScenario, defaultDemand, type Setup } from '../scenarios/setup';
 import { PATTERNS } from '../scenarios/patterns';
@@ -69,6 +70,8 @@ interface AppState {
   playing: boolean;
   speed: number;
   metrics: MetricsSnapshot | null;
+  /** Recent queue and delay samples for the live trend chart, oldest first. */
+  trend: TrendSample[];
   clock: SignalClock | null;
   simTime: number;
   /** Clock time in hours while a demand pattern is active. */
@@ -130,6 +133,7 @@ export const useApp = create<AppState>((set, get) => ({
   playing: true,
   speed: 2,
   metrics: null,
+  trend: [],
   clock: null,
   simTime: 0,
   timeOfDay: null,

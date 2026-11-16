@@ -42,6 +42,19 @@ export interface Vehicle {
   holdAt: number | null;
 }
 
+/** A snapshot for the live trend chart, taken every few simulated seconds. */
+export interface TrendSample {
+  time: number;
+  /** Vehicles queued on the approaches or waiting to enter the map, all legs. */
+  queued: number;
+  /** Vehicle-seconds lost so far, by every vehicle (unlike the metrics, never reset). */
+  lost: number;
+  /** Vehicles that have come to use the junction so far. */
+  arrived: number;
+  /** The layout was edited since the previous sample. */
+  edit?: boolean;
+}
+
 export interface Pedestrian {
   id: number;
   crosswalk: number;
@@ -118,6 +131,9 @@ const GIVE_UP_AFTER = 45;
 const OVERLOAD_BACKLOG = 25;
 /** Gridlock: drivers could go, yet nobody has entered or left the junction for this long. */
 const GRIDLOCK_AFTER = 60;
+/** The trend chart samples this often, and keeps this much history (seconds). */
+const TREND_EVERY = 5;
+const TREND_KEEP = 30 * 60;
 
 export class Simulation {
   network: Network;
@@ -160,6 +176,11 @@ export class Simulation {
   private stalledFor = 0;
   /** Whether the junction has gridlocked since the metrics last started. */
   private gridlocked = false;
+  private trendLog: TrendSample[] = [];
+  private nextTrend = 0;
+  private lostAll = 0;
+  private enteredCount = 0;
+  private editedSinceTrend = false;
   /** Vehicles still partly in the lane they are leaving, by that lane. */
   private laneGhosts: Vehicle[][] = [];
   /** Urgent mergers waiting for a gap, by the lane they want to enter. */
@@ -206,6 +227,21 @@ export class Simulation {
     this.signals.step(dt);
     this.time += dt;
     this.stepCount++;
+    if (this.time >= this.nextTrend) this.sampleTrend();
+  }
+
+  /** Recent history for the live trend chart: oldest first, carried across edits and metric resets. */
+  get trend(): readonly TrendSample[] {
+    return this.trendLog;
+  }
+
+  private sampleTrend() {
+    let queued = 0;
+    for (const q of this.currentQueues().values()) queued += q.queue;
+    this.trendLog.push({ time: this.time, queued, lost: this.lostAll, arrived: this.enteredCount, ...(this.editedSinceTrend ? { edit: true } : {}) });
+    this.editedSinceTrend = false;
+    while (this.trendLog.length && this.trendLog[0]!.time < this.time - TREND_KEEP) this.trendLog.shift();
+    this.nextTrend = this.time + TREND_EVERY - 1e-6;
   }
 
   /** Change traffic demand on the fly. Vehicles already on the map or waiting to enter are kept. */
@@ -285,6 +321,7 @@ export class Simulation {
     this.signals.setControl(next.control);
     this.clock = this.signals.clock();
     this.stalledFor = 0;
+    this.editedSinceTrend = true;
     this.regularIn.clear();
     this.mergeRequests.clear();
     for (const veh of this.vehicles) {
@@ -480,6 +517,7 @@ export class Simulation {
         if (this.network.movementLanes.has(movementKey(d.from, d.to))) {
           this.backlog.get(d.from)!.push({ to: d.to, arrivalTime, length, speedFactor, laneDraw });
           this.metrics.recordArrival(d.from, arrivalTime);
+          this.enteredCount++;
         } else {
           // Banned or impossible on this layout: these drivers go another way.
           this.divertedCount++;
@@ -1220,14 +1258,15 @@ export class Simulation {
     const since = this.metrics.startTime;
     const net = this.network;
     for (const veh of this.vehicles) {
-      if (veh.arrivalTime < since) continue;
       const free =
         veh.seg === 1 ? net.connectors[veh.connector]!.speedLimit : net.lanes[veh.seg === 0 ? veh.inLane : veh.outLane]!.speedLimit;
       const lost = dt * Math.max(0, 1 - veh.v / (free * veh.speedFactor));
-      if (lost > 0) this.metrics.addLostTime(veh.from, lost, this.time);
+      this.lostAll += lost;
+      if (lost > 0 && veh.arrivalTime >= since) this.metrics.addLostTime(veh.from, lost, this.time);
     }
     // Waiting to even enter the map is all lost time.
     for (const [leg, queue] of this.backlog) {
+      this.lostAll += dt * queue.length;
       for (const p of queue) if (p.arrivalTime >= since) this.metrics.addLostTime(leg, dt, this.time);
     }
   }

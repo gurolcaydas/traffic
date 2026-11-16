@@ -2,6 +2,7 @@ import { t } from '../../core/i18n';
 import type { MetricsSnapshot } from '../../sim/metrics';
 import { legColor } from '../../render/theme';
 import { useApp } from '../store';
+import { TrendChart } from './TrendChart';
 
 export const LOS_TEXT: Record<string, () => string> = {
   A: () => t('Free flow', 'Serbest akış'),
@@ -19,6 +20,7 @@ const fmt = (s: number) => (s < 100 ? s.toFixed(1) : Math.round(s).toString());
 
 export function MetricsPanel({ onReset }: { onReset: () => void }) {
   const m = useApp((s) => s.metrics);
+  const trend = useApp((s) => s.trend);
   const scenario = useApp((s) => s.scenario);
   const legIds = scenario.legs.map((l) => l.id);
   const maxQueue = Math.max(20, ...(m?.legs.map((l) => l.queue) ?? [0]));
@@ -107,6 +109,8 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
           </dl>
         </>
       )}
+
+      <TrendChart samples={trend} />
 
       <Comparison current={m} />
 
