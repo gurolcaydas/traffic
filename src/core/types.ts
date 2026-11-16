@@ -28,6 +28,8 @@ export interface LegSpec {
   banned?: LegId[];
   /** A separate near-side turning lane that bypasses the junction around a corner island. */
   slipLane?: boolean;
+  /** Street name, when known (e.g. from OpenStreetMap). */
+  name?: string;
 }
 
 export type CrosswalkType = 'zebra' | 'signal';
@@ -113,6 +115,8 @@ export interface Scenario {
   control: ControlSpec;
   /** Pairs of legs whose straight-through traffic crosses the junction on a bridge, in its own lane. */
   flyovers?: Array<[LegId, LegId]>;
+  /** Where a design came from, if it was imported (map data needs attribution). */
+  source?: { kind: 'osm'; lat: number; lon: number; label?: string };
   demand: {
     vehicles: VehicleDemand[];
     pedestrians: PedestrianDemand[];

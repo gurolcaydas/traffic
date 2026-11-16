@@ -1,0 +1,841 @@
+{
+  "version": 0.6,
+  "generator": "Overpass API 0.7.62.11 87bfad18",
+  "osm3s": {
+    "timestamp_osm_base": "2026-11-16T05:12:37Z",
+    "copyright": "The data included in this document is from www.openstreetmap.org. The data is made available under ODbL."
+  },
+  "elements": [
+
+{
+  "type": "node",
+  "id": 42432436,
+  "lat": 40.7528159,
+  "lon": -73.9813803,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals:direction": "forward"
+  }
+},
+{
+  "type": "node",
+  "id": 42432438,
+  "lat": 40.7521404,
+  "lon": -73.9797786,
+  "tags": {
+    "highway": "traffic_signals"
+  }
+},
+{
+  "type": "node",
+  "id": 42437358,
+  "lat": 40.7534805,
+  "lon": -73.9808792,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals:direction": "forward"
+  }
+},
+{
+  "type": "node",
+  "id": 42445914,
+  "lat": 40.7515352,
+  "lon": -73.9802218,
+  "tags": {
+    "highway": "traffic_signals"
+  }
+},
+{
+  "type": "node",
+  "id": 42445916,
+  "lat": 40.7528125,
+  "lon": -73.9792873,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals": "signal",
+    "traffic_signals:direction": "forward"
+  }
+},
+{
+  "type": "node",
+  "id": 42454428,
+  "lat": 40.7541655,
+  "lon": -73.9803921,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals:direction": "forward"
+  }
+},
+{
+  "type": "node",
+  "id": 561042203,
+  "lat": 40.7521738,
+  "lon": -73.9778143,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals": "signal",
+    "traffic_signals:direction": "backward"
+  }
+},
+{
+  "type": "node",
+  "id": 1289222420,
+  "lat": 40.7541228,
+  "lon": -73.9824111,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals": "signal",
+    "traffic_signals:arrow": "no",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 1289222431,
+  "lat": 40.7546391,
+  "lon": -73.9836337
+},
+{
+  "type": "node",
+  "id": 3826754271,
+  "lat": 40.7535341,
+  "lon": -73.9810220,
+  "tags": {
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "highway": "crossing",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3942050698,
+  "lat": 40.7533944,
+  "lon": -73.9809447,
+  "tags": {
+    "crossing": "traffic_signals",
+    "highway": "crossing",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3942050699,
+  "lat": 40.7534350,
+  "lon": -73.9807591,
+  "tags": {
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "highway": "crossing",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3942050702,
+  "lat": 40.7541020,
+  "lon": -73.9804361,
+  "tags": {
+    "crossing": "traffic_signals",
+    "highway": "crossing",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360014,
+  "lat": 40.7520883,
+  "lon": -73.9798168,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:arrow": "no",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360015,
+  "lat": 40.7521059,
+  "lon": -73.9796835,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:arrow": "no",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360017,
+  "lat": 40.7522100,
+  "lon": -73.9797279,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:arrow": "no",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360020,
+  "lat": 40.7527186,
+  "lon": -73.9793551,
+  "tags": {
+    "button_operated": "yes",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "yes",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360021,
+  "lat": 40.7527651,
+  "lon": -73.9791798,
+  "tags": {
+    "button_operated": "yes",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "no",
+    "traffic_signals:sound": "yes",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360023,
+  "lat": 40.7528560,
+  "lon": -73.9793857,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360025,
+  "lat": 40.7529093,
+  "lon": -73.9792135,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 4960516269,
+  "lat": 40.7520347,
+  "lon": -73.9798559,
+  "tags": {
+    "bus": "yes",
+    "name": "Madison Avenue & East 41st Street",
+    "network": "NYC Transit",
+    "operator": "MTA",
+    "public_transport": "stop_position",
+    "ref": "403458"
+  }
+},
+{
+  "type": "node",
+  "id": 7826843770,
+  "lat": 40.7528885,
+  "lon": -73.9813256,
+  "tags": {
+    "crossing": "traffic_signals",
+    "highway": "crossing"
+  }
+},
+{
+  "type": "node",
+  "id": 7826843771,
+  "lat": 40.7527636,
+  "lon": -73.9812565,
+  "tags": {
+    "crossing": "traffic_signals",
+    "highway": "crossing"
+  }
+},
+{
+  "type": "node",
+  "id": 8937823540,
+  "lat": 40.7532703,
+  "lon": -73.9789392
+},
+{
+  "type": "node",
+  "id": 10166333017,
+  "lat": 40.7515794,
+  "lon": -73.9801888,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 10166333082,
+  "lat": 40.7535765,
+  "lon": -73.9808089,
+  "tags": {
+    "crossing": "traffic_signals",
+    "highway": "crossing"
+  }
+},
+{
+  "type": "node",
+  "id": 10166333105,
+  "lat": 40.7521827,
+  "lon": -73.9798777,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:arrow": "no",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 11043235442,
+  "lat": 40.7531449,
+  "lon": -73.9811322,
+  "tags": {
+    "bus": "yes",
+    "name": "5th Avenue & West 42nd Street",
+    "network": "NYC Transit",
+    "operator": "MTA",
+    "public_transport": "stop_position"
+  }
+},
+{
+  "type": "node",
+  "id": 11507273087,
+  "lat": 40.7525013,
+  "lon": -73.9785988
+},
+{
+  "type": "node",
+  "id": 11507273100,
+  "lat": 40.7523540,
+  "lon": -73.9782442,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals": "signal",
+    "traffic_signals:direction": "forward"
+  }
+},
+{
+  "type": "node",
+  "id": 11507273101,
+  "lat": 40.7524684,
+  "lon": -73.9785210,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals": "signal",
+    "traffic_signals:direction": "backward"
+  }
+},
+{
+  "type": "node",
+  "id": 11817409612,
+  "lat": 40.7526474,
+  "lon": -73.9789052
+},
+{
+  "type": "node",
+  "id": 11817409613,
+  "lat": 40.7525282,
+  "lon": -73.9786563
+},
+{
+  "type": "node",
+  "id": 11817409614,
+  "lat": 40.7525551,
+  "lon": -73.9787114
+},
+{
+  "type": "node",
+  "id": 11817409615,
+  "lat": 40.7526182,
+  "lon": -73.9788429
+},
+{
+  "type": "node",
+  "id": 11817409616,
+  "lat": 40.7526714,
+  "lon": -73.9789568
+},
+{
+  "type": "node",
+  "id": 11817409617,
+  "lat": 40.7526936,
+  "lon": -73.9790069
+},
+{
+  "type": "node",
+  "id": 11817409618,
+  "lat": 40.7532568,
+  "lon": -73.9803326
+},
+{
+  "type": "node",
+  "id": 12183285348,
+  "lat": 40.7518731,
+  "lon": -73.9791222
+},
+{
+  "type": "node",
+  "id": 13707001850,
+  "lat": 40.7517344,
+  "lon": -73.9800755,
+  "tags": {
+    "bus": "yes",
+    "name": "Madison Avenue & East 40th Street",
+    "network": "NYC Transit",
+    "operator": "MTA",
+    "public_transport": "stop_position",
+    "ref": "403457"
+  }
+},
+{
+  "type": "node",
+  "id": 13785909811,
+  "lat": 40.7524108,
+  "lon": -73.9783817,
+  "tags": {
+    "button_operated": "yes",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "yes",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "way",
+  "id": 5672991,
+  "nodes": [
+    561042203,
+    11507273100,
+    13785909811,
+    11507273101,
+    11507273087,
+    11817409613,
+    11817409614,
+    11817409615,
+    11817409612,
+    11817409616,
+    11817409617,
+    3955360021,
+    42445916
+  ],
+  "tags": {
+    "bus:lanes": "yes|designated",
+    "hgv": "local",
+    "highway": "primary",
+    "lanes": "4",
+    "lanes:bus": "2",
+    "lit": "yes",
+    "maxspeed": "25 mph",
+    "name": "East 42nd Street",
+    "name:ru": "Восточная 42-я стрит",
+    "oneway": "no",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "wikidata": "Q110061",
+    "wikipedia": "en:42nd Street (Manhattan)"
+  }
+},
+{
+  "type": "way",
+  "id": 438384692,
+  "nodes": [
+    42445916,
+    3955360023,
+    11817409618
+  ],
+  "tags": {
+    "bus:lanes:backward": "designated|yes|designated",
+    "bus:lanes:forward": "yes|designated",
+    "hgv": "local",
+    "highway": "primary",
+    "lanes": "5",
+    "lanes:backward": "2",
+    "lanes:bus:backward": "2",
+    "lanes:bus:forward": "1",
+    "lanes:forward": "3",
+    "lit": "yes",
+    "maxspeed": "25 mph",
+    "name": "East 42nd Street",
+    "name:ru": "Восточная 42-я стрит",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "turn:lanes:backward": "left||",
+    "wikidata": "Q110061",
+    "wikipedia": "en:42nd Street (Manhattan)"
+  }
+},
+{
+  "type": "way",
+  "id": 511699181,
+  "nodes": [
+    42445916,
+    3955360025,
+    8937823540
+  ],
+  "tags": {
+    "hgv": "destination",
+    "highway": "secondary",
+    "lanes": "4",
+    "lanes:bus": "2",
+    "lit": "yes",
+    "maxspeed": "25 mph",
+    "name": "Madison Avenue",
+    "name:etymology:wikidata": "Q11813",
+    "name:ru": "Мэдисон-авеню",
+    "oneway": "yes",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "wikidata": "Q109849",
+    "wikipedia": "en:Madison Avenue"
+  }
+},
+{
+  "type": "way",
+  "id": 511699182,
+  "nodes": [
+    42445914,
+    10166333017,
+    13707001850,
+    4960516269,
+    3955360014,
+    42432438,
+    3955360017,
+    3955360020,
+    42445916
+  ],
+  "tags": {
+    "cycleway:right": "no",
+    "hgv": "destination",
+    "highway": "secondary",
+    "lanes": "4",
+    "lit": "yes",
+    "name": "Madison Avenue",
+    "name:etymology:wikidata": "Q11813",
+    "name:ru": "Мэдисон-авеню",
+    "oneway": "yes",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "wikidata": "Q109849",
+    "wikipedia": "en:Madison Avenue"
+  }
+},
+{
+  "type": "way",
+  "id": 511699183,
+  "nodes": [
+    42437358,
+    3826754271,
+    1289222420,
+    1289222431
+  ],
+  "tags": {
+    "access": "yes",
+    "bus:lanes": "yes|designated",
+    "foot": "designated",
+    "hgv": "local",
+    "highway": "primary",
+    "lanes": "4",
+    "lanes:bus": "2",
+    "lit": "yes",
+    "maxspeed": "25 mph",
+    "name": "West 42nd Street",
+    "name:ru": "Западная 42-я стрит",
+    "oneway": "no",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "wikidata": "Q110061",
+    "wikipedia": "en:42nd Street (Manhattan)"
+  }
+},
+{
+  "type": "way",
+  "id": 511699184,
+  "nodes": [
+    42454428,
+    3942050702,
+    10166333082,
+    42437358
+  ],
+  "tags": {
+    "access:lanes": "yes|yes|yes|no",
+    "bus:lanes": "yes|yes|yes|designated",
+    "fixme": "Verify lane count",
+    "hgv": "no",
+    "highway": "secondary",
+    "lanes": "4",
+    "lit": "yes",
+    "name": "5th Avenue",
+    "name:en": "5th Avenue",
+    "name:ru": "5-я авеню",
+    "oneway": "yes",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "wikidata": "Q109858",
+    "wikipedia": "en:Fifth Avenue"
+  }
+},
+{
+  "type": "way",
+  "id": 511699185,
+  "nodes": [
+    42437358,
+    3942050698,
+    11043235442,
+    7826843770,
+    42432436
+  ],
+  "tags": {
+    "access:lanes": "yes|yes|yes|no|no",
+    "bus:lanes": "yes|yes|yes|designated|designated",
+    "hgv": "no",
+    "highway": "secondary",
+    "lanes": "5",
+    "lanes:bus": "2",
+    "lit": "yes",
+    "maxspeed": "25 mph",
+    "name": "5th Avenue",
+    "name:en": "5th Avenue",
+    "name:ru": "5-я авеню",
+    "oneway": "yes",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "wikidata": "Q109858",
+    "wikipedia": "en:Fifth Avenue"
+  }
+},
+{
+  "type": "way",
+  "id": 1272613981,
+  "nodes": [
+    11817409618,
+    3942050699,
+    42437358
+  ],
+  "tags": {
+    "bus:lanes:backward": "yes|designated",
+    "bus:lanes:forward": "designated|yes|designated",
+    "hgv": "local",
+    "highway": "primary",
+    "lanes": "5",
+    "lanes:backward": "2",
+    "lanes:bus:backward": "1",
+    "lanes:bus:forward": "2",
+    "lanes:forward": "3",
+    "lit": "yes",
+    "maxspeed": "25 mph",
+    "name": "East 42nd Street",
+    "name:ru": "Восточная 42-я стрит",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "turn:lanes:forward": "left||",
+    "wikidata": "Q110061",
+    "wikipedia": "en:42nd Street (Manhattan)"
+  }
+},
+{
+  "type": "way",
+  "id": 1316295724,
+  "nodes": [
+    42432436,
+    7826843771,
+    10166333105,
+    42432438,
+    3955360015,
+    12183285348
+  ],
+  "tags": {
+    "alt_name": "Library Way",
+    "highway": "residential",
+    "lanes": "2",
+    "lit": "yes",
+    "maxspeed": "25 mph",
+    "name": "East 41st Street",
+    "name:ru": "Восточная 41-я стрит",
+    "oneway": "yes",
+    "sidewalk:both": "separate",
+    "surface": "asphalt",
+    "wikidata": "Q65254678"
+  }
+},
+{
+  "type": "node",
+  "id": 42437358,
+  "lat": 40.7534805,
+  "lon": -73.9808792,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals:direction": "forward"
+  }
+},
+{
+  "type": "node",
+  "id": 42445916,
+  "lat": 40.7528125,
+  "lon": -73.9792873,
+  "tags": {
+    "highway": "traffic_signals",
+    "traffic_signals": "signal",
+    "traffic_signals:direction": "forward"
+  }
+},
+{
+  "type": "node",
+  "id": 3826754271,
+  "lat": 40.7535341,
+  "lon": -73.9810220,
+  "tags": {
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "highway": "crossing",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3942050698,
+  "lat": 40.7533944,
+  "lon": -73.9809447,
+  "tags": {
+    "crossing": "traffic_signals",
+    "highway": "crossing",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3942050699,
+  "lat": 40.7534350,
+  "lon": -73.9807591,
+  "tags": {
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "highway": "crossing",
+    "tactile_paving": "yes"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360020,
+  "lat": 40.7527186,
+  "lon": -73.9793551,
+  "tags": {
+    "button_operated": "yes",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "yes",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360023,
+  "lat": 40.7528560,
+  "lon": -73.9793857,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 3955360025,
+  "lat": 40.7529093,
+  "lon": -73.9792135,
+  "tags": {
+    "button_operated": "no",
+    "crossing": "traffic_signals",
+    "crossing:island": "no",
+    "crossing:markings": "zebra",
+    "crossing:signals": "yes",
+    "highway": "crossing",
+    "tactile_paving": "yes",
+    "traffic_signals:sound": "no",
+    "traffic_signals:vibration": "no"
+  }
+},
+{
+  "type": "node",
+  "id": 10166333082,
+  "lat": 40.7535765,
+  "lon": -73.9808089,
+  "tags": {
+    "crossing": "traffic_signals",
+    "highway": "crossing"
+  }
+}
+
+  ]
+}

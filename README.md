@@ -11,6 +11,16 @@ lanes, roundabouts, bridges or crossings, while the traffic keeps moving.
 - Banned turns count as a 90 s detour, so bans are a trade-off, not a free win.
 - Best stars are saved in your browser, and each level unlocks when the previous one has a star.
 
+**Phase 5: real junctions.** In the sandbox, **Import a real junction from the map** finds a place by name (Nominatim), coordinates or an openstreetmap.org link, reads the roads around it from OpenStreetMap (Overpass, with two fallback servers), and shows a preview before opening it:
+
+- road names, types, lane counts and one-way streets; the two halves of a divided road become one leg
+- traffic lights, roundabouts, or priority for the main road; pedestrian crossings near the junction
+- the side of the road people drive on, from the location
+- traffic volumes are estimated from road types, so adjust them in the Traffic table
+- up to six roads (the most important ones), at most three lanes each way
+
+Map data © OpenStreetMap contributors, ODbL. Nothing is sent until you press Find.
+
 **Phase 4: your own junctions.** In the sandbox:
 
 - **Edit shape** lets you drag a road's handle to turn it, press **+** to add a road in any gap wide enough, or **×** to remove one. Junctions have 2–6 roads, kept at least 30° apart, and every change applies under running traffic.
@@ -66,6 +76,7 @@ npm run sim       # play the sample scenarios headless and print metrics (npm ru
 | `src/network/roundabout.ts` | Roundabout geometry (ring size, tangent entry and exit curves, flared curbs) and the ring's rules. |
 | `src/game/` | Levels (`levels.ts`), what designs cost (`costs.ts`) and how they're scored (`score.ts`). |
 | `src/scenarios/shape.ts`, `storage.ts` | Adding, turning and removing roads (keeping the scenario consistent), and saving, exporting and importing designs. |
+| `src/osm/` | OpenStreetMap import: `api.ts` finds places and fetches roads, `convert.ts` turns the roads around a point into a Scenario. |
 | `src/scenarios/patterns.ts` | Time-of-day patterns, tidal flows, and the maths to look a factor up for any hour. |
 | `src/sim/evaluate.ts` | Headless test runs and paired statistics for the fair test. `src/app/eval.worker.ts` and `fairTest.ts` spread the runs over a pool of workers. |
 | `src/scenarios/edit.ts` | The edits a player can make (control, lanes, crossings, bans, flyovers, signal phases and presets), as plain functions on a Scenario. |

@@ -37,6 +37,7 @@ export function LegLabels({ renderer, network }: { renderer: Renderer | null; ne
               {leg.id}
             </span>
             <span className="leg-meta">
+              {leg.name && <span className="leg-name">{leg.name} · </span>}
               <span className="num">{inflow}</span> veh/h
               {queue > 0 && (
                 <>

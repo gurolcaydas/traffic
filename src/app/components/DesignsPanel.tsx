@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { ImportDialog } from './ImportDialog';
 import { deleteDesign, designFile, listDesigns, parseScenario, saveDesign, type SavedDesign } from '../../scenarios/storage';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
@@ -12,6 +13,7 @@ export function DesignsPanel() {
   const [name, setName] = useState('My junction');
   const [message, setMessage] = useState<{ text: string; bad?: boolean } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
   if (rules.inLevel) return null;
 
   const save = () => {
@@ -50,6 +52,10 @@ export function DesignsPanel() {
         <h2>My designs</h2>
         <span className="hint">Saved in this browser</span>
       </header>
+      <button className="btn real-junction" onClick={() => setImporting(true)}>
+        🌍 Import a real junction from the map
+      </button>
+      {importing && <ImportDialog onClose={() => setImporting(false)} />}
       <div className="row gap">
         <input className="text" aria-label="Design name" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
         <button className="btn primary" onClick={save}>

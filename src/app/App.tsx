@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { useApp } from './store';
 import { DemandPanel } from './components/DemandPanel';
 import { DesignsPanel } from './components/DesignsPanel';
 import { FairTestPanel } from './components/FairTestPanel';
@@ -16,6 +17,7 @@ import { useSimulation } from './useSimulation';
 export function App() {
   const host = useRef<HTMLDivElement>(null);
   const { renderer, network, resetMetrics } = useSimulation(host);
+  const source = useApp((s) => s.scenario.source);
 
   return (
     <div className="app">
@@ -25,6 +27,14 @@ export function App() {
         <LegLabels renderer={renderer} network={network} />
         <ShapeEditor renderer={renderer} network={network} />
         <div className="legend">Click a leg to edit it · car colour = where it's going · scroll to zoom · drag to pan · double-click to fit</div>
+        {source?.kind === 'osm' && (
+          <div className="map-attribution">
+            {source.label ? `${source.label.split(',').slice(0, 2).join(',')} · ` : ''}Roads ©{' '}
+            <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">
+              OpenStreetMap contributors
+            </a>
+          </div>
+        )}
       </main>
       <aside className="sidebar">
         <LevelPanel />
