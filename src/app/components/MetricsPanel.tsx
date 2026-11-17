@@ -90,6 +90,18 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
                 </dd>
               </div>
             )}
+            <div title={t('How many times the average driver had to come to a halt', 'Ortalama bir sürücünün kaç kez durmak zorunda kaldığı')}>
+              <dt>{t('Stops', 'Duruş')}</dt>
+              <dd>
+                <span className="num">{m.stopsPerVehicle.toFixed(2)}</span> {t('per veh', 'araç başı')}
+              </dd>
+            </div>
+            <div title={t('A rough estimate from a fuel model: idling and stop-start driving burn more', 'Yakıt modelinden kaba bir tahmin: rölanti ve dur-kalk daha çok yakar')}>
+              <dt>CO₂</dt>
+              <dd>
+                <span className="num">{Math.round(m.co2PerVehicle)}</span> {t('g per veh', 'g araç başı')}
+              </dd>
+            </div>
             {scenario.crosswalks.length > 0 && (
               <div>
                 <dt>{t('Ped wait', 'Yaya bekleme')}</dt>
@@ -120,6 +132,9 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
             <tr>
               <th>{t('Leg', 'Yol')}</th>
               <th>{t('Queue', 'Kuyruk')}</th>
+              <th className="r" title={t('Queue length exceeded only 5% of the time: room the approach needs', 'Zamanın yalnızca %5\'inde aşılan kuyruk: yolun ihtiyaç duyduğu yer')}>
+                95%
+              </th>
               <th className="r">{t('Delay', 'Gecikme')}</th>
             </tr>
           </thead>
@@ -137,7 +152,16 @@ export function MetricsPanel({ onReset }: { onReset: () => void }) {
                     <span className="bar-label num">{l.queue}</span>
                   </div>
                 </td>
-                <td className="r num">{l.completed ? `${fmt(l.avgDelay)}s` : '–'}</td>
+                <td className="r num">{l.queue95}</td>
+                <td className="r num">
+                  {l.completed ? (
+                    <>
+                      {fmt(l.avgDelay)}s <span className={`los-chip los-${l.los}`}>{l.los}</span>
+                    </>
+                  ) : (
+                    '–'
+                  )}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -9,6 +9,8 @@ export const COSTS = {
   lane: 40,
   majorRoad: 10,
   signals: 120,
+  /** Vehicle detectors in each approach, for signals that respond to traffic. */
+  detectors: 50,
   roundabout: 300,
   sideRoad: 150,
   flyover: 600,
@@ -26,6 +28,8 @@ export function costItems(start: Scenario, now: Scenario): CostItem[] {
     const s = startLeg(leg.id);
     if (!s) continue;
     lanes += Math.max(0, leg.lanesIn - s.lanesIn) + Math.max(0, leg.lanesOut - s.lanesOut);
+    // A turn pocket is a short lane, but it costs the widening all the same.
+    if (leg.turnPocket && !s.turnPocket) lanes++;
   }
   if (lanes) items.push({ label: t(`${lanes} extra lane${lanes > 1 ? 's' : ''}`, `${lanes} ek şerit`), cost: lanes * COSTS.lane });
 
@@ -37,6 +41,9 @@ export function costItems(start: Scenario, now: Scenario): CostItem[] {
   } else if (now.control.type === 'priority' && start.control.type === 'priority' && now.control.major.length && !start.control.major.length) {
     items.push({ label: t('Priority signs', 'Öncelik levhaları'), cost: COSTS.majorRoad });
   }
+
+  const detecting = (s: Scenario) => s.control.type === 'signals' && !!s.control.actuated;
+  if (detecting(now) && !detecting(start)) items.push({ label: t('Vehicle detectors', 'Araç algılayıcıları'), cost: COSTS.detectors });
 
   const sideRoads = now.legs.filter((l) => l.slipLane && !startLeg(l.id)?.slipLane).length;
   if (sideRoads) items.push({ label: t(`${sideRoads} side road${sideRoads > 1 ? 's' : ''}`, `${sideRoads} serbest dönüş yolu`), cost: sideRoads * COSTS.sideRoad });

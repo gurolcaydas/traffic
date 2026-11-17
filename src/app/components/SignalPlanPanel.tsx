@@ -5,12 +5,14 @@ import {
   applyPlanPreset,
   phaseMovements,
   removePhase,
+  setActuated,
   setPhaseGreen,
   toggleEntryInPhase,
   toggleMovementInPhase,
   togglePedInPhase,
   type PlanPreset,
 } from '../../scenarios/edit';
+import { applyWebsterTiming, websterTiming } from '../../scenarios/timing';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
 
@@ -39,7 +41,8 @@ export function SignalPlanPanel() {
   const edit = useApp((s) => s.edit);
   const rules = useRules();
   if (scenario.control.type !== 'signals' || !rules.signalPlan) return null;
-  const { phases, ring } = scenario.control;
+  const { phases, ring, actuated } = scenario.control;
+  const webster = websterTiming(scenario);
   const legIndex = (id: string) => scenario.legs.findIndex((l) => l.id === id);
   const signalCrossings = scenario.crosswalks.filter((c) => c.type === 'signal');
   const cycle = phases.reduce((s, p) => s + p.green + 5, 0);
@@ -62,6 +65,38 @@ export function SignalPlanPanel() {
           </button>
         ))}
       </div>
+
+      <div className="chips">
+        <button
+          className="chip"
+          title={t(
+            `Webster's method: green in proportion to each phase's busiest approach, over the cycle that keeps delay lowest (about ${Math.round(webster?.cycle ?? 0)} s for this traffic)`,
+            `Webster yöntemi: yeşil, her fazın en yoğun yoluna göre paylaştırılır; devre, gecikmeyi en aza indiren uzunlukta olur (bu trafik için yaklaşık ${Math.round(webster?.cycle ?? 0)} sn)`,
+          )}
+          onClick={() => edit(t('Signals timed from traffic', 'Işıklar trafiğe göre ayarlandı'), applyWebsterTiming)}
+        >
+          ⏱ {t('Time from traffic', 'Trafiğe göre ayarla')}
+        </button>
+        <button
+          className={`chip ${actuated ? 'on' : ''}`}
+          aria-pressed={!!actuated}
+          title={t(
+            'Detectors end a green early once its traffic stops coming and someone is waiting; the green times become maximums',
+            'Algılayıcılar, trafiği biten ve başka yönde bekleyen varsa yeşili erken bitirir; yeşil süreleri üst sınır olur',
+          )}
+          onClick={() => edit(actuated ? t('Fixed-time signals', 'Sabit süreli ışıklar') : t('Signals respond to traffic', 'Işıklar trafiğe duyarlı'), (d) => setActuated(d, !actuated))}
+        >
+          {t('Responds to traffic', 'Trafiğe duyarlı')}
+        </button>
+      </div>
+      {webster && webster.total >= 0.9 && (
+        <p className="alert">
+          {t(
+            `Traffic needs ${Math.round(webster.total * 100)}% of the junction's green: no timing can keep up. Add lanes or change the layout.`,
+            `Trafik, kavşağın yeşil süresinin %${Math.round(webster.total * 100)} kadarını istiyor: hiçbir ayar yetişemez. Şerit ekleyin ya da düzeni değiştirin.`,
+          )}
+        </p>
+      )}
 
       {ring && alwaysOpen.length > 0 && (
         <p className="alert">
@@ -87,10 +122,13 @@ export function SignalPlanPanel() {
                 max={60}
                 step={5}
                 value={phase.green}
-                aria-label={t(`Phase ${i + 1} green seconds`, `Faz ${i + 1} yeşil süresi (sn)`)}
+                aria-label={actuated ? t(`Phase ${i + 1} longest green, seconds`, `Faz ${i + 1} en uzun yeşil süresi (sn)`) : t(`Phase ${i + 1} green seconds`, `Faz ${i + 1} yeşil süresi (sn)`)}
                 onChange={(e) => edit(t(`Phase ${i + 1}: ${e.target.value}s green`, `Faz ${i + 1}: ${e.target.value} sn yeşil`), (d) => setPhaseGreen(d, i, Number(e.target.value)))}
               />
-              <span className="num">{phase.green}s</span>
+              <span className="num">
+                {actuated ? '≤' : ''}
+                {phase.green}s
+              </span>
               {phases.length > 1 && (
                 <button className="link danger" onClick={() => edit(t(`Removed phase ${i + 1}`, `Faz ${i + 1} kaldırıldı`), (d) => removePhase(d, i))} aria-label={t(`Remove phase ${i + 1}`, `Faz ${i + 1} kaldır`)}>
                   ✕

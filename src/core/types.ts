@@ -28,6 +28,16 @@ export interface LegSpec {
   banned?: LegId[];
   /** A separate near-side turning lane that bypasses the junction around a corner island. */
   slipLane?: boolean;
+  /**
+   * A turn pocket: a short extra lane beside the median for far-side turns (and U-turns), so drivers
+   * waiting to turn across traffic do it out of the through traffic's way.
+   */
+  turnPocket?: boolean;
+  /**
+   * Painted lane arrows: which kinds of turn each inbound lane serves, curb lane first. Without it, or if
+   * it leaves a turn with no lane, the turns are shared out across the lanes automatically.
+   */
+  laneTurns?: Array<Array<'near' | 'through' | 'far'>>;
   /** Street name, when known (e.g. from OpenStreetMap). */
   name?: string;
 }
@@ -104,6 +114,11 @@ export type ControlSpec =
        * turners going round the island) while that entry has green.
        */
       ring?: boolean;
+      /**
+       * Traffic-responsive (actuated) signals: each phase's green is a maximum. A green ends early once
+       * no more traffic is arriving for it and someone is waiting at a red, and stays on while nobody is.
+       */
+      actuated?: boolean;
     }
   | {
       /** One-lane roundabout: entering traffic gives way to traffic already circulating. */
@@ -131,6 +146,8 @@ export interface Scenario {
     pedestrians: PedestrianDemand[];
     /** Time-of-day pattern. Without one, traffic is the table's, all day long. */
     pattern?: DemandPattern;
+    /** Share of vehicles that are trucks or buses (0 to 1); 0.06 when not given. A third of them are buses. */
+    heavyShare?: number;
   };
 }
 

@@ -10,8 +10,14 @@ Underneath is a real traffic simulation: car-following, gap acceptance, signal p
 
 - **Six puzzle levels.** Each gives you a jammed junction, a budget and some limits: shops that block widening, a building on a corner, crossings that must stay. Your design is scored on average delay, from one to three stars.
 - **Sandbox.** Build any junction with 2 to 6 roads at any angle and 1 to 4 lanes each way. Choose the control: yield to the right, a major road, traffic lights, a roundabout, or a Turkish-style roundabout with traffic lights. On a lit roundabout, left turners go round the island in the inner lane and wait at lights on the ring. On either kind of roundabout, drivers can also make U-turns.
+- **Lanes and lights like the real thing.**
+  - *Turn pockets:* a short extra lane where drivers turning across traffic wait out of the way.
+  - *Lane arrows:* paint which turns each lane serves.
+  - *Webster timing:* one button times the lights from the traffic.
+  - *Traffic-responsive signals:* a green ends early once its traffic stops coming.
 - **Live editing.** You can change the following without restarting the traffic:
   - signal plans
+  - lanes, turn pockets and lane arrows
   - turn bans
   - side roads (slip lanes)
   - flyovers
@@ -23,7 +29,13 @@ Underneath is a real traffic simulation: car-following, gap acceptance, signal p
   - crossings
   - which side people drive on
 - **Fair test.** Compares two designs on exactly the same random traffic over several runs, and gives every difference with a 95% confidence interval.
-- **Traffic through the day.** Choose commuter, school run, evening event or weekend. Each pattern varies the traffic hour by hour, and the busy direction can reverse during the day (into town in the morning, out in the evening). Results include the worst 15 minutes.
+- **Traffic through the day.** Choose commuter, school run, evening event, a single peak hour or weekend. Each pattern varies the traffic hour by hour, and the busy direction can reverse during the day (into town in the morning, out in the evening). The peak hour has a sharper 15-minute surge inside it, as real traffic counts do.
+- **Trucks and buses.** Choose their share of the traffic. They pull away slowly and need longer gaps.
+- **Engineering measures.** Besides average delay and level of service (A–F, overall and per approach), you get:
+  - stops per vehicle
+  - a rough CO₂ estimate per vehicle
+  - the 95th-percentile queue on each approach
+  - the delay in the worst 15 minutes
 - **Your designs.** Save designs in the browser, or export one to a `.traffic.json` file and import it elsewhere.
 - **Right- or left-hand traffic.** You can switch the whole junction to drive on the other side.
 - **English and Turkish.** The app follows the browser's language, and you can switch it from the top bar.
@@ -44,6 +56,8 @@ Each addition has a price:
 | Roundabout | 300 |
 | Side road | 150 |
 | Flyover | 600 |
+| Turn pocket | 40 |
+| Vehicle detectors (traffic-responsive signals) | 50 |
 | Zebra / signalised crossing | 20 / 60 |
 | Turn ban | 5 |
 | Priority signs | 10 |
@@ -71,17 +85,19 @@ Then open http://localhost:5173.
 | `npm test` | Runs the unit and simulation tests (Vitest) |
 | `npm run typecheck` | Runs TypeScript with no output |
 | `npm run sim` | Runs sample junctions headless and prints their metrics. `npm run sim -- 30` runs 30 minutes |
+| `npm run calibrate` | Compares the model with standard traffic-engineering results |
 
 ## How it works
 
 The simulation runs in a Web Worker at a fixed 0.1 s step and streams frames to a PixiJS renderer, which draws the vehicles in between frames. React and Zustand handle only the sidebar and controls.
 
 - **Driving.** Vehicles follow the car ahead using the Intelligent Driver Model. They change lanes using MOBIL: to gain speed, or to reach a lane for their turn.
-- **Right of way.** Wherever two paths through the junction cross, one side gives way. Drivers wait for a gap, commit, and don't enter the junction if a stuck car blocks their way.
-- **Calibration.** The figures roughly match published values:
-  - one lane at a green discharges about 1,900 vehicles/h
+- **Right of way.** Wherever two paths through the junction cross, one side gives way. Drivers wait for a gap, commit, and don't enter the junction if a stuck car blocks their way. Drivers differ in the gaps they accept, and accept smaller ones the longer they've waited.
+- **Calibration.** Tests hold the model to published values (`npm run calibrate` prints the comparison):
+  - one lane at a green discharges about 1,850–1,900 vehicles/h, depending on the share of trucks and buses
   - signal delays follow Webster's formula
-  - a one-lane roundabout carries about 1,650 vehicles/h
+  - a one-lane roundabout entry follows the HCM capacity curve for the traffic going round
+  - a side road crossing a main road follows gap-acceptance theory
 - **Fair comparisons.** Every traffic stream has its own seeded random generator. Two different designs run with the same seed therefore see exactly the same cars at the same moments.
 
 The full model is described in [docs/simulation.md](docs/simulation.md).
@@ -100,6 +116,7 @@ The full model is described in [docs/simulation.md](docs/simulation.md).
 | `src/app/` | React UI, the Zustand store, and the simulation and evaluation workers |
 | `tests/` | Vitest tests, including collision and path checks on the simulation |
 | `scripts/run-sim.ts` | Headless runner behind `npm run sim` |
+| `scripts/calibrate.ts` | The comparison behind `npm run calibrate` |
 
 ## Built with
 

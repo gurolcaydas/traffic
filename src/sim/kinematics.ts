@@ -11,6 +11,15 @@ export interface IdmParams {
 }
 
 export const DEFAULT_IDM: IdmParams = { a: 2.0, b: 2.0, T: 1.0, s0: 2.0 };
+
+export type VehicleKind = 'car' | 'truck' | 'bus';
+
+/** Each kind of vehicle: its length (m) and how it drives. Heavy vehicles pull away slowly and keep longer gaps. */
+export const VEHICLE_KINDS: Record<VehicleKind, { length: number; idm: IdmParams }> = {
+  car: { length: 4.5, idm: DEFAULT_IDM },
+  truck: { length: 10, idm: { a: 1.0, b: 1.5, T: 1.4, s0: 2.5 } },
+  bus: { length: 12, idm: { a: 1.2, b: 1.5, T: 1.3, s0: 2.5 } },
+};
 export const MAX_DECEL = 8;
 
 /**

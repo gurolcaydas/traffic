@@ -73,6 +73,24 @@ export const PATTERNS: Record<string, PatternPreset> = {
       centreLeg,
     }),
   },
+  peakHour: {
+    get label() {
+      return t('Peak hour', 'Zirve saat');
+    },
+    get description() {
+      return t(
+        'One busy hour, with a sharper 15-minute surge inside it, as real traffic counts show (a peak hour factor of about 0.9).',
+        'Tek bir yoğun saat ve içinde, gerçek sayımlarda görüldüğü gibi, daha keskin 15 dakikalık bir dalga (zirve saat katsayısı yaklaşık 0,9).',
+      );
+    },
+    tidal: false,
+    make: () => ({
+      id: 'peakHour',
+      startHour: 7,
+      endHour: 10,
+      points: [[7, 0.5], [7.5, 0.8], [7.85, 0.95], [8.05, 1.12], [8.3, 1.12], [8.5, 0.95], [8.85, 0.8], [9.4, 0.55], [10, 0.5]],
+    }),
+  },
   weekend: {
     get label() {
       return t('Weekend', 'Hafta sonu');
@@ -131,13 +149,29 @@ export function pedFactor(pattern: DemandPattern | undefined, hour: number): num
   return pattern ? Math.max(0, interpolate(pattern.points, hour)) : 1;
 }
 
+/**
+ * Peak hour factor of a pattern (HCM): traffic in its busiest hour divided by four times the traffic in
+ * the busiest 15 minutes within it. 1 is perfectly even; 0.85 to 0.95 is typical of a city junction.
+ */
+export function peakHourFactor(pattern: DemandPattern): number {
+  const integral = (from: number, to: number) => {
+    let sum = 0;
+    for (let h = from; h < to - 1e-9; h += 1 / 120) sum += interpolate(pattern.points, h + 1 / 240) / 120;
+    return sum;
+  };
+  const start = busiestWindow(pattern, 1, 1 / 60);
+  let peak15 = 0;
+  for (let q = start; q + 0.25 <= start + 1 + 1e-9; q += 1 / 60) peak15 = Math.max(peak15, integral(q, q + 0.25));
+  return integral(start, start + 1) / (4 * peak15);
+}
+
 /** The start hour of the busiest `hours`-long window of the day. */
-export function busiestWindow(pattern: DemandPattern, hours: number): number {
+export function busiestWindow(pattern: DemandPattern, hours: number, step = 0.25): number {
   let best = pattern.startHour;
   let bestSum = -Infinity;
-  for (let start = pattern.startHour; start + hours <= pattern.endHour + 1e-9; start += 0.25) {
+  for (let start = pattern.startHour; start + hours <= pattern.endHour + 1e-9; start += step) {
     let sum = 0;
-    for (let h = start; h < start + hours; h += 0.25) sum += interpolate(pattern.points, h);
+    for (let h = start; h < start + hours; h += step) sum += interpolate(pattern.points, h);
     if (sum > bestSum) {
       bestSum = sum;
       best = start;

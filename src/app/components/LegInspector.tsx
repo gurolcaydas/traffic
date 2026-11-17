@@ -1,7 +1,19 @@
 import { t } from '../../core/i18n';
 import { hasRing, type LegSpec } from '../../core/types';
 import { legColor } from '../../render/theme';
-import { crossingOf, setCrossing, toggleBanned, toggleMajor, type CrossingChoice } from '../../scenarios/edit';
+import { useMemo } from 'react';
+import {
+  clearLaneTurns,
+  crossingOf,
+  laneTurnsOf,
+  setCrossing,
+  toggleBanned,
+  toggleLaneTurn,
+  toggleMajor,
+  toggleTurnPocket,
+  type CrossingChoice,
+  type LaneTurn,
+} from '../../scenarios/edit';
 import { canRemoveLeg, removeLeg } from '../../scenarios/shape';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
@@ -16,6 +28,13 @@ export function LegInspector() {
   const rules = useRules();
   const index = scenario.legs.findIndex((l) => l.id === legId);
   const leg = scenario.legs[index];
+  // The arrows the lanes have now, and the ones they'd get automatically (every kind of turn that needs a lane).
+  const arrows = useMemo(() => (leg ? laneTurnsOf(scenario, leg.id) : []), [scenario, leg]);
+  const needed = useMemo(() => {
+    if (!leg) return [];
+    const auto = laneTurnsOf({ ...scenario, legs: scenario.legs.map((l) => (l.id === leg.id ? { ...l, laneTurns: undefined } : l)) }, leg.id);
+    return (['far', 'through', 'near'] as const).filter((k) => auto.some((kinds) => kinds.includes(k)));
+  }, [scenario, leg]);
   if (!leg) return null;
 
   const others = scenario.legs.filter((l) => l.id !== leg.id);
@@ -60,6 +79,17 @@ export function LegInspector() {
           />
         </div>
       </div>
+
+      {rules.lanes && leg.lanesIn > 0 && !hasRing(scenario.control) && (
+        <LaneArrows
+          lanes={leg.laneTurns?.length === leg.lanesIn ? leg.laneTurns : arrows}
+          needed={needed}
+          painted={!!leg.laneTurns}
+          driveSide={scenario.driveSide}
+          edit={(label, change) => edit(`${t('Leg', 'Yol')} ${leg.id}: ${label}`, change)}
+          legId={leg.id}
+        />
+      )}
 
       {rules.crossings && (
       <div className="field">
@@ -127,6 +157,18 @@ export function LegInspector() {
       )}
 
       <div className="field toggles">
+        {rules.lanes && leg.lanesIn > 0 && !hasRing(scenario.control) && (
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={!!leg.turnPocket}
+              onChange={() => edit(`${t('Leg', 'Yol')} ${leg.id}: ${leg.turnPocket ? t('turn pocket removed', 'dönüş cebi kaldırıldı') : t('turn pocket built', 'dönüş cebi yapıldı')}`, (d) => toggleTurnPocket(d, leg.id))}
+            />
+            {scenario.driveSide === 'right'
+              ? t('Turn pocket: a short lane for left turners to wait in, out of the way', 'Dönüş cebi: sola dönenlerin yolu kapatmadan bekleyeceği kısa bir şerit')
+              : t('Turn pocket: a short lane for right turners to wait in, out of the way', 'Dönüş cebi: sağa dönenlerin yolu kapatmadan bekleyeceği kısa bir şerit')}
+          </label>
+        )}
         {!rules.sideRoadBlocked(leg.id) && (
         <label className="toggle">
           <input type="checkbox" checked={!!leg.slipLane} onChange={(e) => update(e.target.checked ? t('side road built', 'serbest dönüş yapıldı') : t('side road removed', 'serbest dönüş kaldırıldı'), (l) => (l.slipLane = e.target.checked))} />
@@ -152,5 +194,83 @@ export function LegInspector() {
         )}
       </div>
     </section>
+  );
+}
+
+const TURN_NAME: Record<LaneTurn, () => string> = {
+  near: () => t('near-side turn', 'yakın dönüş'),
+  through: () => t('straight-on', 'düz'),
+  far: () => t('far-side turn', 'karşıya dönüş'),
+};
+
+/**
+ * Painted arrows per inbound lane, laid out as the driver sees them: median on the left in right-hand
+ * traffic, on the right in left-hand traffic.
+ */
+function LaneArrows({
+  lanes,
+  needed,
+  painted,
+  driveSide,
+  legId,
+  edit,
+}: {
+  lanes: LaneTurn[][];
+  needed: LaneTurn[];
+  painted: boolean;
+  driveSide: 'left' | 'right';
+  legId: string;
+  edit: (label: string, change: (d: Parameters<typeof clearLaneTurns>[0]) => void) => void;
+}) {
+  const right = driveSide === 'right';
+  const glyph: Record<LaneTurn, string> = { near: right ? '↱' : '↰', through: '↑', far: right ? '↰' : '↱' };
+  const kinds = right ? needed : [...needed].reverse();
+  const order = lanes.map((_, i) => i);
+  if (right) order.reverse();
+  const uncovered = needed.filter((k) => !lanes.some((l) => l.includes(k)));
+  return (
+    <div className="field">
+      <label>
+        {t('Lane arrows', 'Şerit okları')}
+        {painted && (
+          <button className="link" onClick={() => edit(t('automatic lane arrows', 'otomatik şerit okları'), (d) => clearLaneTurns(d, legId))}>
+            {t('Automatic', 'Otomatik')}
+          </button>
+        )}
+      </label>
+      <div className="lane-arrows">
+        {order.map((lane) => (
+          <div key={lane} className="lane-arrow-col" aria-label={t(`Lane ${lane + 1} from the curb`, `Kaldırımdan ${lane + 1}. şerit`)}>
+            {kinds.map((k) => {
+              const on = lanes[lane]!.includes(k);
+              return (
+                <button
+                  key={k}
+                  className={`chip tiny ${on ? 'on' : ''}`}
+                  aria-pressed={on}
+                  title={TURN_NAME[k]()}
+                  onClick={() =>
+                    edit(
+                      on ? t(`lane ${lane + 1}: no ${TURN_NAME[k]()} arrow`, `${lane + 1}. şerit: ${TURN_NAME[k]()} oku kalktı`) : t(`lane ${lane + 1}: ${TURN_NAME[k]()} arrow`, `${lane + 1}. şerit: ${TURN_NAME[k]()} oku`),
+                      (d) => toggleLaneTurn(d, legId, lane, k),
+                    )
+                  }
+                >
+                  {glyph[k]}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+      {uncovered.length > 0 && (
+        <p className="alert">
+          {t(
+            `No lane has a ${uncovered.map((k) => TURN_NAME[k]()).join(' or ')} arrow, so the arrows are shared out automatically.`,
+            `Hiçbir şeritte ${uncovered.map((k) => TURN_NAME[k]()).join(' ya da ')} oku yok; oklar otomatik dağıtılıyor.`,
+          )}
+        </p>
+      )}
+    </div>
   );
 }

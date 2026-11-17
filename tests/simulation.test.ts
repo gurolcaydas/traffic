@@ -73,8 +73,8 @@ describe('Simulation', () => {
   });
 
   it('reports gridlock when nobody can get through the junction', () => {
-    // Zebras with a pedestrian every couple of seconds: drivers may never go.
-    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 300, crosswalks: 'zebra', pedPerHourPerCrosswalk: 1500 }));
+    // Zebras with a pedestrian about every second: drivers may never go.
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 300, crosswalks: 'zebra', pedPerHourPerCrosswalk: 3000 }));
     sim.run(300);
     expect(sim.getMetrics().gridlock).toBe(true);
     // A new measuring window still knows the junction is knotted right now.
@@ -189,6 +189,20 @@ describe('Pedestrians', () => {
     expect(sim.getMetrics().pedCrossed).toBeGreaterThan(50);
     expect(badStarts).toBe(0);
   });
+
+  it('cost a roundabout little at a modest 100 pedestrians an hour per zebra', () => {
+    // Drivers wait for pedestrians near their own lane, and give way at the exit crossing when they get
+    // there rather than before entering; so a few pedestrians don't halve a junction's flow.
+    const served = (ped: number) => {
+      const { sim, strikes } = runChecked(
+        crossroad({ vehPerHourPerLeg: 450, control: { type: 'roundabout' }, crosswalks: ped ? 'zebra' : 'none', pedPerHourPerCrosswalk: ped }),
+        1800,
+      );
+      expect(strikes).toBe(0);
+      return sim.counts().exited;
+    };
+    expect(served(100)).toBeGreaterThan(served(0) * 0.88);
+  }, 60000);
 });
 
 describe('Editing features in motion', () => {
@@ -284,32 +298,41 @@ describe('Live editing (applyScenario)', () => {
 
 describe('Lane changing', () => {
   it('drivers change lanes, and every car enters the junction from a lane that serves its turn', () => {
-    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 600, lanes: 3, control: twoPhaseSignals(25) }));
-    const prevSeg = new Map<number, number>();
+    // Three traffic seeds: how many drivers miss their turn varies a lot from run to run.
     let entries = 0;
     let wrongEntries = 0;
     let collisions = 0;
-    for (let i = 0; i < 9000; i++) {
-      sim.step();
-      for (const v of sim.vehicles) {
-        if (prevSeg.get(v.id) === 0 && v.seg === 1) {
-          entries++;
-          const conn = sim.network.connectors[v.connector]!;
-          if (conn.to !== v.to || !sim.network.movementLanes.get(`${v.from}>${v.to}`)!.includes(conn.inLane)) wrongEntries++;
+    let laneChanges = 0;
+    let missed = 0;
+    let arrived = 0;
+    for (const seed of [1, 2, 3]) {
+      const sim = new Simulation(crossroad({ vehPerHourPerLeg: 600, lanes: 3, control: twoPhaseSignals(25), seed }));
+      const prevSeg = new Map<number, number>();
+      for (let i = 0; i < 9000; i++) {
+        sim.step();
+        for (const v of sim.vehicles) {
+          if (prevSeg.get(v.id) === 0 && v.seg === 1) {
+            entries++;
+            const conn = sim.network.connectors[v.connector]!;
+            if (conn.to !== v.to || !sim.network.movementLanes.get(`${v.from}>${v.to}`)!.includes(conn.inLane)) wrongEntries++;
+          }
+          prevSeg.set(v.id, v.seg);
         }
-        prevSeg.set(v.id, v.seg);
+        if (i % 5 === 0) collisions += overlappingVehicles(sim).length;
       }
-      if (i % 5 === 0) collisions += overlappingVehicles(sim).length;
+      const c = sim.counts();
+      laneChanges += c.laneChanges;
+      missed += c.missedTurns;
+      arrived += c.arrived;
+      expect(sim.getMetrics().gridlock).toBe(false);
     }
-    const c = sim.counts();
-    expect(entries).toBeGreaterThan(500);
+    expect(entries).toBeGreaterThan(1500);
     expect(wrongEntries).toBe(0);
     expect(collisions).toBe(0);
-    expect(c.laneChanges).toBeGreaterThan(100);
+    expect(laneChanges).toBeGreaterThan(300);
     // Drivers who start in the wrong lane nearly always get across in time.
-    expect(c.missedTurns).toBeLessThan(0.03 * c.arrived);
-    expect(sim.getMetrics().gridlock).toBe(false);
-  });
+    expect(missed).toBeLessThan(0.03 * arrived);
+  }, 30000);
 
   it('keeps single-lane roads free of lane changes', () => {
     const sim = new Simulation(crossroad({ vehPerHourPerLeg: 400 }));
@@ -513,4 +536,101 @@ describe('Signalised roundabouts', () => {
       expect(c.arrived).toBe(c.exited + c.onMap + c.backlog + c.diverted + c.removed);
     }
   }, 20000);
+});
+
+describe('Drivers and vehicles', () => {
+  it('mixes in trucks and buses at the scenario’s share, drawn on arrival', () => {
+    const scenario = crossroad({ vehPerHourPerLeg: 400, control: twoPhaseSignals(25) });
+    scenario.demand.heavyShare = 0.3;
+    const sim = new Simulation(scenario);
+    const kinds = new Map<number, string>();
+    for (let i = 0; i < 6000; i++) {
+      sim.step();
+      if (i % 50 === 0) for (const v of sim.vehicles) kinds.set(v.id, v.kind);
+    }
+    const all = [...kinds.values()];
+    const heavy = all.filter((k) => k !== 'car').length / all.length;
+    expect(heavy).toBeGreaterThan(0.2);
+    expect(heavy).toBeLessThan(0.4);
+    expect(all.filter((k) => k === 'bus').length).toBeGreaterThan(0);
+  });
+
+  it('serves fewer vehicles per hour of green with more heavy vehicles', () => {
+    const served = (heavyShare: number) => {
+      const s = crossroad({ vehPerHourPerLeg: 1200, control: twoPhaseSignals(30) });
+      s.demand.heavyShare = heavyShare;
+      const sim = new Simulation(s);
+      sim.run(300);
+      sim.resetMetrics();
+      sim.run(1800);
+      return sim.getMetrics().throughputPerHour;
+    };
+    expect(served(0.3)).toBeLessThan(served(0) * 0.92);
+  }, 30000);
+
+  it('runs collision-free with many trucks and buses', () => {
+    for (const control of [twoPhaseSignals(25), { type: 'roundabout' as const }, { type: 'priority' as const, major: ['1', '3'] }]) {
+      const scenario = crossroad({ vehPerHourPerLeg: 350, lanes: 2, control });
+      scenario.demand.heavyShare = 0.3;
+      const { collisions, sim } = runChecked(scenario, 600);
+      expect(collisions).toBe(0);
+      expect(sim.getMetrics().gridlockSeen).toBe(false);
+    }
+  }, 60000);
+
+  it('still serves a side road facing a busy main road', () => {
+    // Drivers who have waited long accept smaller gaps, so nobody waits for ever. Gap-acceptance theory
+    // gives this side road about 230 veh/h across 1400 veh/h of main-road traffic.
+    const scenario = crossroad({ vehPerHourPerLeg: 0, control: { type: 'priority', major: ['1', '3'] } });
+    scenario.demand.vehicles = [
+      { from: '1', to: '3', vehPerHour: 700 },
+      { from: '3', to: '1', vehPerHour: 700 },
+      { from: '2', to: '4', vehPerHour: 600 },
+    ];
+    const sim = new Simulation(scenario);
+    sim.run(300);
+    sim.resetMetrics();
+    sim.run(1800);
+    const served = sim.getMetrics().legs.find((l) => l.leg === '2')!.completed * 2;
+    expect(served).toBeGreaterThan(160);
+    expect(served).toBeLessThan(320);
+  }, 30000);
+});
+
+describe('Engineering metrics', () => {
+  const measure = (control: ControlSpec, vehPerHourPerLeg: number) => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg, control }));
+    sim.run(300);
+    sim.resetMetrics();
+    sim.run(1800);
+    return sim.getMetrics();
+  };
+
+  it('counts stops: lights halt drivers that a roundabout lets roll through', () => {
+    const lights = measure(twoPhaseSignals(25), 150);
+    const ring = measure({ type: 'roundabout' }, 150);
+    // At a fixed-time signal about the red share of drivers stop; at a quiet roundabout few do.
+    expect(lights.stopsPerVehicle).toBeGreaterThan(0.4);
+    expect(lights.stopsPerVehicle).toBeLessThan(1.2);
+    expect(ring.stopsPerVehicle).toBeLessThan(0.2);
+  }, 30000);
+
+  it('estimates more CO₂ per vehicle in stop-start traffic', () => {
+    const light = measure(twoPhaseSignals(25), 100);
+    const busy = measure(twoPhaseSignals(25), 400);
+    expect(light.co2PerVehicle).toBeGreaterThan(30);
+    expect(busy.co2PerVehicle).toBeGreaterThan(light.co2PerVehicle * 1.1);
+  }, 30000);
+
+  it('reports a 95th-percentile queue no longer than the longest, with a grade per leg', () => {
+    const m = measure({ type: 'priority', major: ['1', '3'] }, 300);
+    for (const l of m.legs) {
+      expect(l.queue95).toBeLessThanOrEqual(l.maxQueue);
+      expect(['A', 'B', 'C', 'D', 'E', 'F']).toContain(l.los);
+    }
+    // The side roads wait for the major road, so they grade worse.
+    const grade = (leg: string) => 'ABCDEF'.indexOf(m.legs.find((l) => l.leg === leg)!.los);
+    expect(grade('2')).toBeGreaterThan(grade('1'));
+    expect(m.queue95).toBe(Math.max(...m.legs.map((l) => l.queue95)));
+  }, 30000);
 });

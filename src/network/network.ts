@@ -27,20 +27,24 @@ export interface LegGeometry {
   slipOutStart: number | null;
   /** The leg this leg's slip lane leads to. */
   slipTarget: LegId | null;
+  /** If the leg has a turn pocket: where along the leg (from the centre) it opens. */
+  pocketStart: number | null;
   length: number;
   laneWidth: number;
   medianWidth: number;
 }
 
-export type LaneRole = 'regular' | 'slip' | 'flyover';
+export type LaneRole = 'regular' | 'slip' | 'flyover' | 'pocket';
 
 export interface Lane {
   idx: number;
   leg: LegId;
   kind: 'in' | 'out';
   role: LaneRole;
-  /** Among the regular lanes, 0 = curb (outermost). Special lanes use 0. */
+  /** Among the regular lanes, 0 = curb (outermost). A turn pocket comes after them; other special lanes use 0. */
   index: number;
+  /** A turn pocket only exists from this far along its path; before that it's painted-over median. */
+  opensAt: number;
   /** Signed distance of the lane centre from the leg centreline, along the leg's inNormal. */
   offset: number;
   path: Polyline;

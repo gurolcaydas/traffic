@@ -579,6 +579,20 @@ input[type='number']::-webkit-inner-spin-button {
   border-color: color-mix(in srgb, var(--bad) 45%, transparent);
 }
 
+.lane-arrows {
+  display: flex;
+  gap: 6px;
+}
+
+.lane-arrow-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+}
+
 .chip.tiny {
   padding: 1px 7px;
   font-size: 11px;

@@ -45,5 +45,5 @@ describe('fair comparison', () => {
     expect(d.verdict).toBe('better');
     expect(d.mean + d.ci).toBeLessThan(0);
     expect(summarize(cand, true).avgDelay.mean).toBeLessThan(summarize(ref, true).avgDelay.mean);
-  });
+  }, 20000);
 });

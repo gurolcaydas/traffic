@@ -212,6 +212,9 @@ const ROWS: Array<{ key: MetricKey; label: () => string; unit: () => string; low
   { key: 'worst15Delay', label: () => t('Worst 15 min', 'En kötü 15 dk'), unit: () => 's', lowerIsBetter: true },
   { key: 'throughput', label: () => t('Throughput', 'Geçen araç'), unit: () => t('/h', '/sa'), lowerIsBetter: false },
   { key: 'worstQueue', label: () => t('Worst queue', 'En uzun kuyruk'), unit: () => '', lowerIsBetter: true },
+  { key: 'queue95', label: () => t('95% queue', '%95 kuyruk'), unit: () => '', lowerIsBetter: true },
+  { key: 'stops', label: () => t('Stops per vehicle', 'Araç başına duruş'), unit: () => '', lowerIsBetter: true },
+  { key: 'co2', label: () => t('CO₂ per vehicle', 'Araç başına CO₂'), unit: () => ' g', lowerIsBetter: true },
   { key: 'pedWait', label: () => t('Ped wait', 'Yaya bekleme'), unit: () => 's', lowerIsBetter: true },
   { key: 'divertedPerHour', label: () => t('Diverted', 'Yönlendirilen'), unit: () => t('/h', '/sa'), lowerIsBetter: true },
 ];

@@ -66,6 +66,10 @@ export interface RunResult {
   divertedPerHour: number;
   /** Average delay in the worst 15 minutes of the run. */
   worst15Delay: number;
+  /** Stops per vehicle, CO₂ per vehicle (g) and the longest 95th-percentile queue (vehicles). */
+  stops: number;
+  co2: number;
+  queue95: number;
   /** The junction knotted up at some point in the run. */
   gridlock: boolean;
   /** Queues were spilling off the map at the end of the run. */
@@ -88,12 +92,15 @@ export function runOnce(scenario: Scenario, seed: number, warmup: number, durati
     pedWait: m.pedAvgWait,
     divertedPerHour: (m.diverted / m.window) * 3600,
     worst15Delay: m.worst15Delay,
+    stops: m.stopsPerVehicle,
+    co2: m.co2PerVehicle,
+    queue95: m.queue95,
     gridlock: m.gridlockSeen,
     overloaded: m.overloaded,
   };
 }
 
-export type MetricKey = 'avgDelay' | 'worst15Delay' | 'throughput' | 'worstQueue' | 'pedWait' | 'divertedPerHour';
+export type MetricKey = 'avgDelay' | 'worst15Delay' | 'throughput' | 'worstQueue' | 'queue95' | 'stops' | 'co2' | 'pedWait' | 'divertedPerHour';
 
 /** Mean and the half-width of its 95% confidence interval. */
 export interface Estimate {
@@ -107,6 +114,9 @@ export interface DesignSummary {
   worst15Delay: Estimate;
   throughput: Estimate;
   worstQueue: Estimate;
+  queue95: Estimate;
+  stops: Estimate;
+  co2: Estimate;
   pedWait: Estimate;
   divertedPerHour: Estimate;
   los: Los;
@@ -125,6 +135,9 @@ export function summarize(runs: RunResult[], signalised: boolean): DesignSummary
     worst15Delay: est('worst15Delay'),
     throughput: est('throughput'),
     worstQueue: est('worstQueue'),
+    queue95: est('queue95'),
+    stops: est('stops'),
+    co2: est('co2'),
     pedWait: est('pedWait'),
     divertedPerHour: est('divertedPerHour'),
     los: levelOfService(avgDelay.mean, signalised),

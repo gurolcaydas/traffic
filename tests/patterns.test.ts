@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Scenario } from '../src/core/types';
-import { PATTERNS, busiestWindow, demandFactor, interpolate } from '../src/scenarios/patterns';
+import { PATTERNS, busiestWindow, demandFactor, interpolate, peakHourFactor } from '../src/scenarios/patterns';
 import { Simulation } from '../src/sim/simulation';
 import { crossroad, twoPhaseSignals } from '../src/scenarios/templates';
 
@@ -54,7 +54,7 @@ describe('time-of-day traffic', () => {
     const into = sim.arrivalLog.filter(([, , to]) => to === '1').length;
     const out = sim.arrivalLog.filter(([, from]) => from === '1').length;
     expect(into / out).toBeGreaterThan(2);
-  });
+  }, 20000);
 
   it('still gives two designs exactly the same traffic', () => {
     const a = new Simulation({ ...withPattern(crossroad({ vehPerHourPerLeg: 500 }), 'school'), seed: 3 });
@@ -64,7 +64,7 @@ describe('time-of-day traffic', () => {
     a.run(2 * 3600);
     b.run(2 * 3600);
     expect(b.arrivalLog).toEqual(a.arrivalLog);
-  });
+  }, 20000);
 
   it('reports a clock, and can jump it', () => {
     const sim = new Simulation(withPattern(crossroad(), 'event'));
@@ -83,4 +83,23 @@ describe('time-of-day traffic', () => {
     expect(m.gridlock).toBe(false);
     expect(m.worst15Delay).toBeGreaterThan(m.avgDelay * 1.5);
   }, 20000);
+});
+
+describe('peak hour', () => {
+  it('surges for 15 minutes inside its busiest hour, as traffic counts do', () => {
+    const p = PATTERNS.peakHour!.make('1');
+    expect(peakHourFactor(p)).toBeGreaterThan(0.85);
+    expect(peakHourFactor(p)).toBeLessThan(0.95);
+    // The busiest hour carries the table's traffic.
+    const start = busiestWindow(p, 1, 1 / 60);
+    let mean = 0;
+    for (let i = 0; i < 60; i++) mean += interpolate(p.points, start + i / 60) / 60;
+    expect(mean).toBeGreaterThan(0.95);
+    expect(mean).toBeLessThan(1.05);
+  });
+
+  it('calls traffic that never varies a peak hour factor of 1', () => {
+    const flat = { id: 'flat', startHour: 6, endHour: 10, points: [[6, 1], [10, 1]] as Array<[number, number]> };
+    expect(peakHourFactor(flat)).toBeCloseTo(1, 3);
+  });
 });

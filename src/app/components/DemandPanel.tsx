@@ -1,7 +1,7 @@
 import { t } from '../../core/i18n';
 import { hasRing } from '../../core/types';
 import { legColor } from '../../render/theme';
-import { PATTERNS } from '../../scenarios/patterns';
+import { PATTERNS, peakHourFactor } from '../../scenarios/patterns';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
 import { DayChart } from './DayChart';
@@ -13,12 +13,16 @@ const Badge = ({ i, id }: { i: number; id: string }) => (
   </span>
 );
 
+/** Shares of trucks and buses to choose from; 6% is the default. */
+const HEAVY_SHARES = [0, 0.06, 0.15, 0.3];
+
 /** Origin–destination table: vehicles per hour from each leg (rows) to each leg (columns). */
 export function DemandPanel() {
   const scenario = useApp((s) => s.scenario);
   const setVeh = useApp((s) => s.setVehicleDemand);
   const setPed = useApp((s) => s.setPedDemand);
   const scaleDemand = useApp((s) => s.scaleDemand);
+  const setHeavyShare = useApp((s) => s.setHeavyShare);
   const setPattern = useApp((s) => s.setPattern);
   const setCentreLeg = useApp((s) => s.setCentreLeg);
   const jumpToHour = useApp((s) => s.jumpToHour);
@@ -57,7 +61,10 @@ export function DemandPanel() {
       {pattern && preset && (
         <>
           <p className="hint">
-            {preset.description} {t('The table below is the peak-hour traffic.', 'Aşağıdaki tablo zirve saatin trafiğidir.')}
+            {preset.description} {t('The table below is the peak-hour traffic.', 'Aşağıdaki tablo zirve saatin trafiğidir.')}{' '}
+            <span title={t('Busiest hour ÷ (4 × busiest 15 minutes). 1 is even; real junctions are usually 0.85–0.95.', 'En yoğun saat ÷ (4 × en yoğun 15 dakika). 1 düzgün demektir; gerçek kavşaklarda genellikle 0,85–0,95.')}>
+              {t('Peak hour factor', 'Zirve saat katsayısı')} <span className="num">{peakHourFactor(pattern).toFixed(2)}</span>.
+            </span>
           </p>
           {preset.tidal && rules.demand && (
             <div className="field inline-field">
@@ -151,6 +158,22 @@ export function DemandPanel() {
         </button>
         <span className="hint">{t('Applies live: watch the queues react.', 'Anında uygulanır: kuyrukların tepkisini izleyin.')}</span>
       </div>
+      )}
+
+      {rules.demand && (
+        <div className="field">
+          <label>{t('Trucks and buses', 'Kamyon ve otobüs')}</label>
+          <Segmented<number>
+            label={t('Share of trucks and buses', 'Kamyon ve otobüs oranı')}
+            value={HEAVY_SHARES.includes(demand.heavyShare ?? 0.06) ? (demand.heavyShare ?? 0.06) : -1}
+            options={HEAVY_SHARES.map((v) => ({
+              value: v,
+              label: `${Math.round(v * 100)}%`,
+              title: t('Heavy vehicles pull away slowly and need longer gaps', 'Ağır araçlar yavaş kalkar ve daha uzun boşluk ister'),
+            }))}
+            onChange={setHeavyShare}
+          />
+        </div>
       )}
 
       {scenario.crosswalks.length > 0 && (

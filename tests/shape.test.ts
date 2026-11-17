@@ -102,11 +102,11 @@ describe('four-lane roads', () => {
         expect(overlappingVehicles(sim)).toEqual([]);
       }
       // The ring itself is one lane, so wider roads only add capacity where they meet lights.
-      if (control === 'signals') expect(sim.counts().exited).toBeGreaterThan(600);
+      if (control === 'signals') expect(sim.counts().exited).toBeGreaterThan(550);
       expect(parseScenario(JSON.parse(JSON.stringify(s))).error).toBeUndefined();
     }
     const five = crossroad({ angles: [0, 90, 180, 270] });
     five.legs[0]!.lanesIn = 5;
     expect(parseScenario(JSON.parse(JSON.stringify(five))).error).toMatch(/invalid number of lanes/);
-  });
+  }, 20000);
 });

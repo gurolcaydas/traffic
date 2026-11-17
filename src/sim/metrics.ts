@@ -22,6 +22,9 @@ export interface LegMetrics {
   backlog: number;
   completed: number;
   avgDelay: number;
+  los: Los;
+  /** Queue length (vehicles) exceeded only 5% of the time: what the approach must have room to store. */
+  queue95: number;
 }
 
 export interface MetricsSnapshot {
@@ -37,6 +40,12 @@ export interface MetricsSnapshot {
   diverted: number;
   /** Average delay in the worst 15 minutes measured so far (the "peak 15 minutes"). */
   worst15Delay: number;
+  /** Times the average driver had to come to a stop. */
+  stopsPerVehicle: number;
+  /** Rough CO₂ per vehicle while in view, grams, from a fuel model (idling, rolling, accelerating). */
+  co2PerVehicle: number;
+  /** Longest 95th-percentile queue on any approach, vehicles. */
+  queue95: number;
   legs: LegMetrics[];
   /** Traffic in the junction has stopped moving: drivers are blocking each other. */
   gridlock: boolean;
@@ -52,6 +61,24 @@ interface LegAccumulator {
   lost: number;
   arrivals: number;
   maxQueue: number;
+  stops: number;
+  co2: number;
+  /** How many one-second samples saw each queue length. */
+  queueHist: number[];
+}
+
+const emptyLeg = (): LegAccumulator => ({ completed: 0, lost: 0, arrivals: 0, maxQueue: 0, stops: 0, co2: 0, queueHist: [] });
+
+/** The queue length exceeded in only 5% of the samples. */
+function percentile95(hist: number[]): number {
+  const total = hist.reduce((a, n) => a + (n ?? 0), 0);
+  if (total === 0) return 0;
+  let seen = 0;
+  for (let q = 0; q < hist.length; q++) {
+    seen += hist[q] ?? 0;
+    if (seen >= 0.95 * total) return q;
+  }
+  return hist.length - 1;
 }
 
 export class MetricsCollector {
@@ -62,6 +89,8 @@ export class MetricsCollector {
   private pedCrossed = 0;
   private pedWait = 0;
   private diverted = 0;
+  private stops = 0;
+  private co2 = 0;
   /** Per-minute buckets of lost time and arrivals, for the worst 15 minutes. */
   private minutes: Array<{ lost: number; arrivals: number }> = [];
   private legs = new Map<LegId, LegAccumulator>();
@@ -78,8 +107,10 @@ export class MetricsCollector {
     this.pedCrossed = 0;
     this.pedWait = 0;
     this.diverted = 0;
+    this.stops = 0;
+    this.co2 = 0;
     this.minutes = [];
-    this.legs = new Map(legIds.map((id) => [id, { completed: 0, lost: 0, arrivals: 0, maxQueue: 0 }]));
+    this.legs = new Map(legIds.map((id) => [id, emptyLeg()]));
   }
 
   /** When the current measurement window began. Trips that arrived earlier don't count towards delay. */
@@ -123,7 +154,7 @@ export class MetricsCollector {
 
   /** After a layout edit: start tracking legs that are new, keep the rest. */
   ensureLegs(legIds: LegId[]) {
-    for (const id of legIds) if (!this.legs.has(id)) this.legs.set(id, { completed: 0, lost: 0, arrivals: 0, maxQueue: 0 });
+    for (const id of legIds) if (!this.legs.has(id)) this.legs.set(id, emptyLeg());
     for (const id of [...this.legs.keys()]) if (!legIds.includes(id)) this.legs.delete(id);
   }
 
@@ -135,6 +166,25 @@ export class MetricsCollector {
   observeQueue(leg: LegId, queue: number) {
     const l = this.legs.get(leg);
     if (l && queue > l.maxQueue) l.maxQueue = queue;
+  }
+
+  /** Once a second: the queue on each leg, for the 95th percentile. */
+  sampleQueue(leg: LegId, queue: number) {
+    const l = this.legs.get(leg);
+    if (l) l.queueHist[queue] = (l.queueHist[queue] ?? 0) + 1;
+  }
+
+  /** A driver who arrived in this window came to a stop. */
+  recordStop(leg: LegId) {
+    this.stops++;
+    const l = this.legs.get(leg);
+    if (l) l.stops++;
+  }
+
+  addEmissions(leg: LegId, grams: number) {
+    this.co2 += grams;
+    const l = this.legs.get(leg);
+    if (l) l.co2 += grams;
   }
 
   /** Highest average delay over any `n` consecutive minutes with enough traffic to judge. */
@@ -173,14 +223,22 @@ export class MetricsCollector {
       pedAvgWait: this.pedCrossed ? this.pedWait / this.pedCrossed : 0,
       diverted: this.diverted,
       worst15Delay: this.worstWindow(15),
-      legs: [...this.legs].map(([leg, a]) => ({
-        leg,
-        queue: current.get(leg)?.queue ?? 0,
-        backlog: current.get(leg)?.backlog ?? 0,
-        maxQueue: a.maxQueue,
-        completed: a.completed,
-        avgDelay: a.arrivals ? a.lost / a.arrivals : 0,
-      })),
+      stopsPerVehicle: this.arrivals ? this.stops / this.arrivals : 0,
+      co2PerVehicle: this.arrivals ? this.co2 / this.arrivals : 0,
+      queue95: Math.max(0, ...[...this.legs.values()].map((a) => percentile95(a.queueHist))),
+      legs: [...this.legs].map(([leg, a]) => {
+        const avgDelay = a.arrivals ? a.lost / a.arrivals : 0;
+        return {
+          leg,
+          queue: current.get(leg)?.queue ?? 0,
+          backlog: current.get(leg)?.backlog ?? 0,
+          maxQueue: a.maxQueue,
+          completed: a.completed,
+          avgDelay,
+          los: levelOfService(avgDelay, signalised),
+          queue95: percentile95(a.queueHist),
+        };
+      }),
       ...state,
     };
   }

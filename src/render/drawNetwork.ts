@@ -79,7 +79,16 @@ export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
         if (a.role === 'slip' || b.role === 'slip') continue;
         const o = (a.offset + b.offset) / 2;
         const solid = a.role !== b.role;
-        if (solid) line(g, along(leg, leg.stopLine, o), along(leg, leg.length, o));
+        if (a.role === 'pocket' || b.role === 'pocket') {
+          // A turn pocket: solid up to the stop line, dashed where drivers move in, painted-over median before that.
+          const open = leg.pocketStart!;
+          line(g, along(leg, leg.stopLine, o), along(leg, open - 12, o));
+          dashed(g, along(leg, open - 12, o), along(leg, open, o));
+          line(g, along(leg, open, o), along(leg, leg.length, o));
+          const p = a.role === 'pocket' ? a : b;
+          const [lo, hi] = [p.offset - p.width / 2, p.offset + p.width / 2];
+          for (let x = open + 2; x + 3 < leg.length; x += 4) line(g, along(leg, x, lo + 0.3), along(leg, x + 3, hi - 0.3));
+        } else if (solid) line(g, along(leg, leg.stopLine, o), along(leg, leg.length, o));
         else if (a.kind === 'in') {
           line(g, along(leg, leg.stopLine, o), along(leg, leg.stopLine + 15, o));
           dashed(g, along(leg, leg.stopLine + 15, o), along(leg, leg.length, o));
@@ -102,7 +111,7 @@ export function drawNetwork(g: Graphics, net: Network, t: CanvasTheme) {
   // Stop or give-way lines across the regular lanes, and turn arrows.
   const control = net.scenario.control;
   for (const leg of legs) {
-    const regular = laneList(net, leg.id, 'in').filter((l) => l.role === 'regular');
+    const regular = laneList(net, leg.id, 'in').filter((l) => l.role === 'regular' || l.role === 'pocket');
     if (!regular.length) continue;
     const lo = Math.min(...regular.map((l) => l.offset)) - leg.laneWidth / 2;
     const hi = Math.max(...regular.map((l) => l.offset)) + leg.laneWidth / 2;

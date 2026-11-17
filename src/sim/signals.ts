@@ -11,6 +11,17 @@ export interface SignalClock {
   remaining: number;
 }
 
+/** What the detectors of traffic-responsive signals see. */
+export interface SignalDemand {
+  /** Traffic is still arriving for this phase's green, or queued at its line. */
+  arriving(phase: number): boolean;
+  /** Someone (a driver or a pedestrian) is waiting at a red that another phase would serve. */
+  waitingElsewhere(phase: number): boolean;
+}
+
+/** Shortest green a traffic-responsive signal shows, s. */
+export const MIN_GREEN = 6;
+
 /**
  * Runs a signal plan phase by phase. Unlike reading the clock off "time modulo cycle", it keeps its
  * place when the plan is edited: a longer green extends the green that is showing, instead of the
@@ -41,9 +52,18 @@ export class SignalController {
     }
   }
 
-  step(dt: number) {
+  step(dt: number, demand?: SignalDemand) {
     if (this.control.type !== 'signals' || this.control.phases.length === 0) return;
     this.elapsed += dt;
+    if (this.control.actuated && demand && this.stage === 'green') {
+      // Gap out once traffic for this green has stopped coming; max out at the plan's green. Either way
+      // only if someone else is waiting: with nobody at a red, the green rests where it is.
+      if (this.elapsed < MIN_GREEN || !demand.waitingElsewhere(this.phase)) return;
+      if (this.elapsed < this.control.phases[this.phase]!.green && demand.arriving(this.phase)) return;
+      this.stage = 'amber';
+      this.elapsed = 0;
+      return;
+    }
     for (let guard = 0; guard < 16 && this.elapsed >= this.duration(); guard++) {
       this.elapsed -= this.duration();
       if (this.stage === 'green') this.stage = 'amber';
@@ -51,6 +71,7 @@ export class SignalController {
       else {
         this.stage = 'green';
         this.phase = (this.phase + 1) % this.control.phases.length;
+        if (this.control.actuated && demand) break;
       }
     }
   }

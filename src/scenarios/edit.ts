@@ -77,6 +77,38 @@ export function toggleSideRoad(s: Scenario, from: LegId) {
   leg.slipLane = !leg.slipLane;
 }
 
+export function toggleTurnPocket(s: Scenario, legId: LegId) {
+  const leg = s.legs.find((l) => l.id === legId)!;
+  if (leg.turnPocket) delete leg.turnPocket;
+  else leg.turnPocket = true;
+}
+
+export type LaneTurn = 'near' | 'through' | 'far';
+
+/** The kinds of turn each regular inbound lane of a leg serves right now, curb lane first. */
+export function laneTurnsOf(s: Scenario, legId: LegId): LaneTurn[][] {
+  const net = buildNetwork(s);
+  const lanes = net.lanes.filter((l) => l.leg === legId && l.kind === 'in' && l.role === 'regular').sort((a, b) => a.index - b.index);
+  return lanes.map((l) => {
+    const kinds = new Set((net.connectorsFromLane.get(l.idx) ?? []).map((c) => net.connectors[c]!).filter((c) => c.from !== c.to).map((c) => c.turn));
+    return (['near', 'through', 'far'] as const).filter((k) => kinds.has(k));
+  });
+}
+
+/** Paint or remove one turn arrow on one lane, starting from the arrows the lanes have now. */
+export function toggleLaneTurn(s: Scenario, legId: LegId, lane: number, kind: LaneTurn) {
+  const leg = s.legs.find((l) => l.id === legId)!;
+  const turns = leg.laneTurns?.length === leg.lanesIn ? leg.laneTurns.map((k) => [...k]) : laneTurnsOf(s, legId);
+  const now = turns[lane] ?? [];
+  turns[lane] = now.includes(kind) ? now.filter((k) => k !== kind) : [...now, kind];
+  leg.laneTurns = turns;
+}
+
+/** Go back to sharing the turns out across the lanes automatically. */
+export function clearLaneTurns(s: Scenario, legId: LegId) {
+  delete s.legs.find((l) => l.id === legId)!.laneTurns;
+}
+
 /** Pairs of roughly opposite legs that could carry a flyover. */
 export function flyoverCandidates(s: Scenario): Array<[LegId, LegId]> {
   const out: Array<[LegId, LegId]> = [];
@@ -132,7 +164,8 @@ export function applyPlanPreset(s: Scenario, preset: PlanPreset, green = 25) {
     });
   }
   const ring = s.control.type === 'signals' && s.control.ring;
-  s.control = ring ? { type: 'signals', ring: true, phases } : { type: 'signals', phases };
+  const actuated = s.control.type === 'signals' && s.control.actuated;
+  s.control = { type: 'signals', ...(ring ? { ring } : {}), ...(actuated ? { actuated } : {}), phases };
   syncSignalPedestrians(s);
 }
 
@@ -164,6 +197,13 @@ export function togglePedInPhase(s: Scenario, phaseIndex: number, leg: LegId) {
   if (peds.has(leg)) peds.delete(leg);
   else peds.add(leg);
   phase.pedestrians = [...peds];
+}
+
+/** Switch the signals between a fixed-time plan and one that responds to traffic. */
+export function setActuated(s: Scenario, on: boolean) {
+  if (s.control.type !== 'signals') return;
+  if (on) s.control.actuated = true;
+  else delete s.control.actuated;
 }
 
 export function setPhaseGreen(s: Scenario, phaseIndex: number, green: number) {

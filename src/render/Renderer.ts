@@ -275,6 +275,12 @@ function drawVehicle(g: Graphics, x: number, y: number, h: number, length: numbe
   // Windshield band towards the front.
   const ws = length > 6 ? L - 1.6 : L - 1.3;
   g.poly([P(ws, -W + 0.3), P(ws + 0.45, -W + 0.35), P(ws + 0.45, W - 0.35), P(ws, W - 0.3)].flat()).fill({ color: t.windshield, alpha: 0.55 });
+  // A bus: a row of side windows along its length.
+  if (length > 11) {
+    for (let a = -L + 1.2; a < ws - 0.8; a += 1.4) {
+      for (const b of [-W + 0.12, W - 0.32]) g.poly([P(a, b), P(a + 0.9, b), P(a + 0.9, b + 0.2), P(a, b + 0.2)].flat()).fill({ color: t.windshield, alpha: 0.55 });
+    }
+  }
   if (acc < -1) {
     for (const b of [-W + 0.35, W - 0.35]) {
       const [bx, by] = P(-L + 0.1, b);

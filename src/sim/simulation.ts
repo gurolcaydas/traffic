@@ -3,9 +3,10 @@ import type { LegId, Scenario } from '../core/types';
 import { buildNetwork } from '../network/build';
 import { movementKey, type ConflictRef, type Connector, type Network } from '../network/network';
 import { demandFactor, maxDemandFactor, pedFactor } from '../scenarios/patterns';
-import { DEFAULT_IDM, MAX_DECEL, idm, stoppingDistance, timeToTravel, type IdmParams } from './kinematics';
+import { MAX_DECEL, VEHICLE_KINDS, idm, stoppingDistance, timeToTravel, type VehicleKind } from './kinematics';
+import { co2Rate } from './emissions';
 import { MetricsCollector, type MetricsSnapshot } from './metrics';
-import { SignalController, connectorSignal, ringStopState, stateFor, type SignalClock } from './signals';
+import { SignalController, connectorSignal, ringStopState, stateFor, type SignalClock, type SignalDemand } from './signals';
 
 /** Where a vehicle is on its route: approach lane, junction connector, exit lane. */
 export type Segment = 0 | 1 | 2;
@@ -23,14 +24,19 @@ export interface Vehicle {
   v: number;
   acc: number;
   length: number;
+  kind: VehicleKind;
   /** Personal desired-speed factor, so not every driver is identical. */
   speedFactor: number;
+  /** Seconds this driver adds to (or takes off) the gap they need before pulling out. */
+  gapOffset: number;
   /** True once the vehicle has been cleared to enter the junction. */
   committed: boolean;
   /** When the vehicle wanted to enter the map (it may have waited off-map in the backlog). */
   arrivalTime: number;
   /** Continuous time spent (nearly) stopped. */
   stoppedFor: number;
+  /** Moving fast enough since the last stop that coming to a halt again counts as another stop. */
+  stopArmed: boolean;
   /** While changing lanes: the lane being left, and progress 0..1 of the sideways move. */
   lcFrom: number | null;
   lcT: number;
@@ -40,6 +46,11 @@ export interface Vehicle {
    * or null if it is clear to go. Drivers with priority ignore it for conflicts beyond this point.
    */
   holdAt: number | null;
+  /**
+   * Stopped at the line only for someone already crossing in front (a reservation), so this driver goes
+   * the moment they're through. Others giving way must not slip in ahead: that would starve them.
+   */
+  waitsTurn: boolean;
 }
 
 /** A snapshot for the live trend chart, taken every few simulated seconds. */
@@ -71,14 +82,20 @@ export interface Pedestrian {
 interface PendingVehicle {
   to: LegId;
   arrivalTime: number;
+  kind: VehicleKind;
   length: number;
   speedFactor: number;
+  gapOffset: number;
   /** Uniform draw deciding whether this driver starts in the right lane for their turn. */
   laneDraw: number;
 }
 
 const DT_DEFAULT = 0.1;
 const STOPPED_SPEED = 0.5;
+/** After a stop, a driver must get above this speed (m/s) before the next halt counts as another stop. */
+const STOP_REARM = 3;
+/** Waiting this long (s) to get onto the map counts as having had to stop. */
+const BACKLOG_STOP = 1;
 const QUEUED_SPEED = 2;
 /** How far ahead of the stop line drivers start deciding whether they may enter. */
 const DECISION_DISTANCE = 30;
@@ -87,6 +104,8 @@ const PRIORITY_LOOKBACK = 150;
 /** Extra seconds of clearance required behind a priority vehicle. */
 const CROSS_MARGIN = 0.8;
 const MERGE_HEADWAY = 1.2;
+/** Seconds behind a car a merging driver is content to slot in, following it. */
+const FOLLOW_HEADWAY = 1.0;
 /**
  * Speed a driver slows to at the line when their movement must give way and no light tells them it's
  * clear: they have to look before going, whether or not anyone is coming.
@@ -98,12 +117,28 @@ const COMMITTED_MARGIN = 0.3;
 const OCCUPIED_HORIZON = 2.5;
 /** Acceleration a driver counts on when pulling out into a gap. */
 const GAP_ACCEL = 2.5;
+/** The same for a truck or bus: they need about a second more than a car to get across (HCM). */
+const HEAVY_GAP_ACCEL = 1.6;
+/** Spread of drivers' gap acceptance: each needs up to this many seconds more, or less, than average. */
+const GAP_SPREAD = 0.8;
+/** Waiting makes drivers accept smaller gaps: up to this many seconds less... */
+const IMPATIENCE = 1.0;
+/** ...after waiting this long at the line. */
+const IMPATIENT_AFTER = 60;
+/** However impatient, a driver still leaves this much (s) on top of the time to get clear. */
+const MIN_MARGIN = 0.2;
+/** Share of heavy vehicles when the scenario doesn't say; a third of them are buses. */
+const DEFAULT_HEAVY_SHARE = 0.06;
 /** Acceleration assumed for approaching priority traffic (they may speed up a little). */
 const PRIORITY_ACCEL = 1.0;
 /** Deceleration a driver accepts to stop for a signal or a give-way line. */
 const STOP_DECEL = 3.5;
 /** Pedestrians closer than this (along the crosswalk) to a vehicle path block it. */
 const PED_CLEARANCE = 3.0;
+/** A crossing this far (m) beyond a car's length into its turn is one it can wait for when it gets there. */
+const LATER_CROSSING = 4;
+/** Drivers also wait for a pedestrian who will reach that distance of their path within this many seconds. */
+const PED_LOOKAHEAD = 2;
 // Lane changing (MOBIL: Kesting, Treiber & Helbing 2007).
 /** Seconds a sideways move takes. */
 const LC_DURATION = 3;
@@ -121,6 +156,8 @@ const LC_SAFE_DECEL = 4;
 const NO_CHANGE_ZONE = 15;
 /** No lane changes in the first stretch after entering the map, while traffic is still settling. */
 const ENTRY_ZONE = 30;
+/** How far past a turn pocket's mouth (beyond its own length) a driver waiting to get in will go, m. */
+const POCKET_WAIT = 4;
 /** Within this distance of the line, a driver in the wrong lane gets urgent and others let them in. */
 const URGENT_ZONE = 40;
 /** Share of drivers who enter in whatever lane has room and must move across for their turn. */
@@ -131,6 +168,10 @@ const GIVE_UP_AFTER = 45;
 const OVERLOAD_BACKLOG = 25;
 /** Gridlock: drivers could go, yet nobody has entered or left the junction for this long. */
 const GRIDLOCK_AFTER = 60;
+/** Traffic-responsive signals detect vehicles this far before the stop line, m. */
+const DETECTOR_RANGE = 40;
+/** A green is kept while a detected vehicle will reach the line within this many seconds (passage time). */
+const PASSAGE_TIME = 3;
 /** The trend chart samples this often, and keeps this much history (seconds). */
 const TREND_EVERY = 5;
 const TREND_KEEP = 30 * 60;
@@ -155,7 +196,6 @@ export class Simulation {
   private dayStart = 0;
   /** Optional record of every arrival, for tests: [time, from, to]. */
   arrivalLog: Array<[number, LegId, LegId]> | null = null;
-  private idm: IdmParams = DEFAULT_IDM;
   private nextId = 1;
   private nextVehicleArrival: number[];
   private nextPedArrival: number[];
@@ -185,7 +225,7 @@ export class Simulation {
   private laneGhosts: Vehicle[][] = [];
   /** Urgent mergers waiting for a gap, by the lane they want to enter. */
   private mergeRequests = new Map<number, Vehicle[]>();
-  /** Regular inbound lanes of each leg, curb first. */
+  /** Inbound lanes of each leg that drivers move between (regular lanes and any turn pocket), curb first. */
   private regularIn = new Map<LegId, number[]>();
 
   constructor(scenario: Scenario, opts: { dt?: number } = {}) {
@@ -224,11 +264,45 @@ export class Simulation {
     this.updatePedestrians(dt);
     this.observeQueues();
     this.accumulateDelay(dt);
-    this.signals.step(dt);
+    this.signals.step(dt, this.detectors);
     this.time += dt;
     this.stepCount++;
     if (this.time >= this.nextTrend) this.sampleTrend();
   }
+
+  /** What the detectors of traffic-responsive signals see. */
+  private detectors: SignalDemand = {
+    arriving: (phase) => {
+      const net = this.network;
+      for (const veh of this.vehicles) {
+        if (veh.seg !== 0) continue;
+        const conn = net.connectors[veh.connector]!;
+        if (!conn.controlled || !conn.greenPhases.includes(phase)) continue;
+        const toLine = net.lanes[veh.inLane]!.path.length - veh.s;
+        if (toLine < DETECTOR_RANGE && (veh.v < QUEUED_SPEED || toLine < veh.v * PASSAGE_TIME)) return true;
+      }
+      // Pedestrians who pressed the button and haven't had their walk yet.
+      for (const ped of this.pedestrians) {
+        if (!ped.crossing && net.crosswalks[ped.crosswalk]!.greenPhases.includes(phase)) return true;
+      }
+      return false;
+    },
+    waitingElsewhere: (phase) => {
+      const net = this.network;
+      for (const veh of this.vehicles) {
+        const conn = net.connectors[veh.connector]!;
+        if (veh.seg === 0) {
+          if (!conn.controlled || conn.greenPhases.length === 0 || conn.greenPhases.includes(phase)) continue;
+          if (net.lanes[veh.inLane]!.path.length - veh.s < DETECTOR_RANGE) return true;
+        } else if (veh.seg === 1 && veh.v < QUEUED_SPEED && this.ringRedAhead(conn, veh.s, veh.v) !== null) return true;
+      }
+      for (const ped of this.pedestrians) {
+        const cw = net.crosswalks[ped.crosswalk]!;
+        if (!ped.crossing && cw.type === 'signal' && !cw.greenPhases.includes(phase)) return true;
+      }
+      return false;
+    },
+  };
 
   /** Recent history for the live trend chart: oldest first, carried across edits and metric resets. */
   get trend(): readonly TrendSample[] {
@@ -404,8 +478,16 @@ export class Simulation {
     }
 
     const allowed = net.movementLanes.get(movementKey(veh.from, veh.to))!.map((i) => net.lanes[i]!);
-    const lane = closest(allowed, oldIn);
-    const conn = (net.connectorsFromLane.get(lane.idx) ?? []).map((c) => net.connectors[c]!).find((c) => c.to === veh.to);
+    let lane = closest(allowed, oldIn);
+    let conn = (net.connectorsFromLane.get(lane.idx) ?? []).map((c) => net.connectors[c]!).find((c) => c.to === veh.to);
+    if (veh.seg === 0 && veh.s - veh.length < lane.opensAt) {
+      // Short of a turn pocket's mouth: wait in the lane beside it, to move over once it opens.
+      const beside = lanesFor(veh.from, 'in').filter((l) => l.role === 'regular' && l.opensAt === 0);
+      if (beside.length) {
+        lane = beside.reduce((a, b) => (a.index >= b.index ? a : b));
+        conn = this.connectorFor(lane.idx, veh.to, net);
+      }
+    }
     if (!conn) return false;
     veh.inLane = lane.idx;
     veh.connector = conn.idx;
@@ -430,7 +512,8 @@ export class Simulation {
       for (let i = 1; i < list.length; i++) {
         const leader = list[i - 1]!;
         const veh = list[i]!;
-        const limit = leader.s - leader.length - gap;
+        // Closing in on the car ahead, a follower also needs room to stop.
+        const limit = leader.s - leader.length - gap - stoppingDistance(Math.max(0, veh.v - leader.v), MAX_DECEL);
         if (veh.s <= limit) continue;
         veh.s = limit;
         veh.v = Math.min(veh.v, leader.v);
@@ -442,7 +525,8 @@ export class Simulation {
     const off = new Set(pushedOff);
     this.vehicles = this.vehicles.filter((v) => !off.has(v));
     for (const veh of pushedOff) {
-      this.backlog.get(veh.from)?.unshift({ to: veh.to, arrivalTime: veh.arrivalTime, length: veh.length, speedFactor: veh.speedFactor, laneDraw: 1 });
+      const { to, arrivalTime, kind, length, speedFactor, gapOffset } = veh;
+      this.backlog.get(veh.from)?.unshift({ to, arrivalTime, kind, length, speedFactor, gapOffset, laneDraw: 1 });
     }
   }
 
@@ -467,12 +551,29 @@ export class Simulation {
       const heading = lane + Math.max(-MAX_LC_ANGLE, Math.min(MAX_LC_ANGLE, turn));
       return { x: from.x + (to.x - from.x) * k, y: from.y + (to.y - from.y) * k, heading };
     }
-    const path = this.pathOf(veh);
-    const sc = veh.s - veh.length / 2;
-    // The centre can still be on the previous segment just after a transition.
-    const p = sc >= 0 ? path.pointAt(sc) : this.prevPath(veh).pointAt(this.prevPath(veh).length + sc);
-    const d = sc >= 0 ? path.directionAt(sc) : this.prevPath(veh).directionAt(this.prevPath(veh).length + sc);
-    return { x: p.x, y: p.y, heading: Math.atan2(d.y, d.x) };
+    // The body runs from the front bumper's point on the route back to the rear's, so on a curve it cuts
+    // inside the path, as a real vehicle's rear wheels do, instead of swinging out into the next lane.
+    const front = this.routePoint(veh, veh.s);
+    const rear = this.routePoint(veh, veh.s - veh.length);
+    const dx = front.x - rear.x;
+    const dy = front.y - rear.y;
+    if (Math.hypot(dx, dy) < 0.1) {
+      const d = this.pathOf(veh).directionAt(Math.max(0, veh.s - veh.length / 2));
+      return { x: front.x, y: front.y, heading: Math.atan2(d.y, d.x) };
+    }
+    return { x: (front.x + rear.x) / 2, y: (front.y + rear.y) / 2, heading: Math.atan2(dy, dx) };
+  }
+
+  /** A point `s` along the vehicle's current segment; negative values reach back along the route behind it. */
+  private routePoint(veh: Vehicle, s: number) {
+    const net = this.network;
+    const segs = [net.lanes[veh.inLane]!.path, net.connectors[veh.connector]!.path, net.lanes[veh.outLane]!.path];
+    let seg = veh.seg as number;
+    while (s < 0 && seg > 0) {
+      seg--;
+      s += segs[seg]!.length;
+    }
+    return segs[seg]!.pointAt(Math.max(0, s));
   }
 
   pedestrianPosition(ped: Pedestrian): { x: number; y: number } {
@@ -508,14 +609,18 @@ export class Simulation {
         this.nextVehicleArrival[i]! += rng.exponential(this.peakVehRate(d.vehPerHour));
         // Everything is drawn now, whatever happens next, so every design sees the same vehicles.
         const keep = rng.next() < demandFactor(pattern, this.hourAt(arrivalTime), d.from, d.to) / peak;
-        const length = rng.next() < 0.06 ? 9 : 4.5;
+        const heavy = this.scenario.demand.heavyShare ?? DEFAULT_HEAVY_SHARE;
+        const kindDraw = rng.next();
+        const kind: VehicleKind = kindDraw < (heavy * 2) / 3 ? 'truck' : kindDraw < heavy ? 'bus' : 'car';
+        const length = VEHICLE_KINDS[kind].length;
         const speedFactor = rng.range(0.9, 1.1);
         const laneDraw = rng.next();
+        const gapOffset = rng.range(-GAP_SPREAD, GAP_SPREAD);
         if (!keep) continue;
         this.arrivedCount++;
         this.arrivalLog?.push([arrivalTime, d.from, d.to]);
         if (this.network.movementLanes.has(movementKey(d.from, d.to))) {
-          this.backlog.get(d.from)!.push({ to: d.to, arrivalTime, length, speedFactor, laneDraw });
+          this.backlog.get(d.from)!.push({ to: d.to, arrivalTime, kind, length, speedFactor, gapOffset, laneDraw });
           this.metrics.recordArrival(d.from, arrivalTime);
           this.enteredCount++;
         } else {
@@ -565,12 +670,16 @@ export class Simulation {
         this.metrics.recordDiverted();
         continue;
       }
-      const { length, speedFactor } = pending;
+      const { kind, length, speedFactor, gapOffset } = pending;
       // Most drivers pick a lane that suits their turn; some just take whichever regular lane has
       // room and sort it out later. Either way, the lane with the most room at its start.
-      const regular = this.regularIn.get(leg) ?? [];
-      const anyLane = pending.laneDraw < WRONG_LANE_SHARE && regular.length > 1 && lanes.every((l) => regular.includes(l));
-      const candidates = anyLane ? regular : lanes;
+      const regular = (this.regularIn.get(leg) ?? []).filter((l) => net.lanes[l]!.opensAt === 0);
+      // Truck and bus drivers know their route and are never among them.
+      const anyLane = kind === 'car' && pending.laneDraw < WRONG_LANE_SHARE && regular.length > 1 && lanes.every((l) => regular.includes(l));
+      // A turn pocket hasn't opened yet where cars come onto the map: they start in the lane beside it.
+      const open = lanes.filter((l) => net.lanes[l]!.opensAt === 0);
+      const candidates = anyLane ? regular : open.length ? open : regular.slice(-1);
+      if (candidates.length === 0) continue;
       let best = -1;
       let bestRoom = -Infinity;
       let bestLast: Vehicle | undefined;
@@ -584,12 +693,15 @@ export class Simulation {
           bestLast = last;
         }
       }
-      if (bestRoom < length + this.idm.s0 + 1) continue; // approach is full: spillback
+      if (bestRoom < length + VEHICLE_KINDS[kind].idm.s0 + 1) continue; // approach is full: spillback
 
       queue.shift();
       const lane = net.lanes[best]!;
       const connector = this.connectorFor(best, pending.to);
       const v = bestLast && bestRoom < 40 ? bestLast.v : lane.speedLimit * speedFactor;
+      // Held up waiting to get onto the map: that was a stop.
+      const waited = this.time - pending.arrivalTime > BACKLOG_STOP;
+      if (waited && pending.arrivalTime >= this.metrics.startTime) this.metrics.recordStop(leg);
       const veh: Vehicle = {
         id: this.nextId++,
         from: leg,
@@ -602,14 +714,18 @@ export class Simulation {
         v,
         acc: 0,
         length,
+        kind,
         speedFactor,
+        gapOffset,
         committed: false,
         arrivalTime: pending.arrivalTime,
         stoppedFor: 0,
+        stopArmed: v > STOP_REARM || !waited,
         lcFrom: null,
         lcT: 1,
         lastLaneChange: -Infinity,
         holdAt: null,
+        waitsTurn: false,
       };
       this.vehicles.push(veh);
       this.laneVehicles[best]!.push(veh);
@@ -624,7 +740,7 @@ export class Simulation {
     this.laneGhosts = this.network.lanes.map(() => []);
     if (this.regularIn.size === 0) {
       for (const l of this.network.lanes) {
-        if (l.kind !== 'in' || l.role !== 'regular') continue;
+        if (l.kind !== 'in' || (l.role !== 'regular' && l.role !== 'pocket')) continue;
         this.regularIn.set(l.leg, [...(this.regularIn.get(l.leg) ?? []), l.idx]);
       }
       for (const list of this.regularIn.values()) list.sort((a, b) => this.network.lanes[a]!.index - this.network.lanes[b]!.index);
@@ -658,10 +774,18 @@ export class Simulation {
   // --- lane changing ------------------------------------------------------
 
   /** The turn from `lane` to `to`, or any turn from that lane if it doesn't lead there (wrong lane). */
-  private connectorFor(lane: number, to: LegId): Connector {
-    const net = this.network;
+  private connectorFor(lane: number, to: LegId, net = this.network): Connector {
     const conns = (net.connectorsFromLane.get(lane) ?? []).map((c) => net.connectors[c]!);
     return conns.find((c) => c.to === to) ?? conns[0]!;
+  }
+
+  /** The turn pocket next to this vehicle that it still has to move into, if any. */
+  private pocketFor(veh: Vehicle) {
+    if (veh.seg !== 0 || !this.inWrongLane(veh)) return null;
+    const net = this.network;
+    const lanes = this.regularIn.get(veh.from) ?? [];
+    const next = net.lanes[lanes[lanes.indexOf(veh.inLane) + 1] ?? -1];
+    return next && next.role === 'pocket' && (net.movementLanes.get(movementKey(veh.from, veh.to)) ?? []).includes(next.idx) ? next : null;
   }
 
   /** True if this lane cannot take the vehicle where it is going. */
@@ -681,7 +805,7 @@ export class Simulation {
       if (veh.seg !== 0 || veh.committed || veh.lcFrom !== null) continue;
       if ((this.stepCount + veh.id) % 5 !== 0) continue;
       const lane = net.lanes[veh.inLane]!;
-      if (lane.role !== 'regular' || veh.s < ENTRY_ZONE) continue;
+      if ((lane.role !== 'regular' && lane.role !== 'pocket') || veh.s < ENTRY_ZONE) continue;
       const regular = this.regularIn.get(lane.leg) ?? [];
       const pos = regular.indexOf(lane.idx);
       const toLine = lane.path.length - veh.s;
@@ -694,6 +818,8 @@ export class Simulation {
         if (goals.length === 0) continue;
         const goal = goals.reduce((a, b) => (Math.abs(a.i - pos) <= Math.abs(b.i - pos) ? a : b));
         const target = regular[pos + Math.sign(goal.i - pos)]!;
+        // Into a turn pocket only once it has opened alongside the whole car.
+        if (veh.s - veh.length < net.lanes[target]!.opensAt) continue;
         const urgent = toLine < URGENT_ZONE;
         if (this.time - veh.lastLaneChange > LC_COOLDOWN && this.laneChangeIsSafe(veh, target, urgent)) {
           this.doLaneChange(veh, target);
@@ -715,7 +841,7 @@ export class Simulation {
       if (toLine < NO_CHANGE_ZONE || this.time - veh.lastLaneChange < LC_COOLDOWN) continue;
       let best: { lane: number; gain: number } | null = null;
       for (const target of [regular[pos - 1], regular[pos + 1]]) {
-        if (target === undefined || !allowed.has(target)) continue;
+        if (target === undefined || !allowed.has(target) || veh.s - veh.length < net.lanes[target]!.opensAt) continue;
         const gain = this.laneChangeGain(veh, target);
         if (gain > LC_THRESHOLD && (!best || gain > best.gain) && this.laneChangeIsSafe(veh, target, false)) best = { lane: target, gain };
       }
@@ -768,7 +894,8 @@ export class Simulation {
 
   private freeAccel(veh: Vehicle, leader: Vehicle | undefined, gapTo: (l: Vehicle) => number): number {
     const v0 = this.network.lanes[veh.inLane]!.speedLimit * veh.speedFactor;
-    return leader ? idm(this.idm, veh.v, v0, gapTo(leader), veh.v - leader.v) : idm(this.idm, veh.v, v0, Infinity, 0);
+    const p = VEHICLE_KINDS[veh.kind].idm;
+    return leader ? idm(p, veh.v, v0, gapTo(leader), veh.v - leader.v) : idm(p, veh.v, v0, Infinity, 0);
   }
 
   /** MOBIL incentive: my gain from moving, minus a polite share of what my new follower loses. */
@@ -799,13 +926,13 @@ export class Simulation {
       if (gap < minGap) return false;
       // Nor may the changer have to brake hard for its new leader (e.g. a stopped queue).
       const v0 = this.network.lanes[target]!.speedLimit * veh.speedFactor;
-      if (idm(this.idm, veh.v, v0, gap, veh.v - leader.v) < -LC_SAFE_DECEL) return false;
+      if (idm(VEHICLE_KINDS[veh.kind].idm, veh.v, v0, gap, veh.v - leader.v) < -LC_SAFE_DECEL) return false;
     }
     if (follower) {
       const gap = veh.s - veh.length - follower.s;
       if (gap < minGap) return false;
       const v0 = this.network.lanes[target]!.speedLimit * follower.speedFactor;
-      if (idm(this.idm, follower.v, v0, gap, follower.v - veh.v) < -LC_SAFE_DECEL) return false;
+      if (idm(VEHICLE_KINDS[follower.kind].idm, follower.v, v0, gap, follower.v - veh.v) < -LC_SAFE_DECEL) return false;
     }
     return true;
   }
@@ -817,7 +944,7 @@ export class Simulation {
     const conn = net.connectors[veh.connector]!;
     const inLane = net.lanes[veh.inLane]!;
     const outLane = net.lanes[veh.outLane]!;
-    const p = this.idm;
+    const p = VEHICLE_KINDS[veh.kind].idm;
 
     const segLimit = veh.seg === 0 ? inLane.speedLimit : veh.seg === 1 ? conn.speedLimit : outLane.speedLimit;
     const v0 = segLimit * veh.speedFactor;
@@ -838,6 +965,9 @@ export class Simulation {
       for (const g of this.laneGhosts[veh.inLane]!) {
         if (g !== veh && g.s > veh.s) obstacle(g.s - g.length - veh.s, g.v);
       }
+      // Bound for a turn pocket that is full to its mouth: wait there, in the lane beside it, for room.
+      const pocket = this.pocketFor(veh);
+      if (pocket) obstacle(pocket.opensAt + veh.length + POCKET_WAIT - veh.s, 0);
       // Zipper merge: let in an urgent merger just ahead in the next lane.
       for (const m of this.mergeRequests.get(veh.inLane) ?? []) {
         // Hold back behind its rear; a car already alongside can't help and doesn't brake.
@@ -857,6 +987,7 @@ export class Simulation {
         if (!veh.committed) obstacle(d - 0.5, 0);
       } else {
         veh.committed = false;
+        veh.waitsTurn = false;
       }
       // 3. Slow down to the connector's curve speed before reaching it, and to a looking speed if
       //    this movement must give way without a signal to rely on.
@@ -875,10 +1006,12 @@ export class Simulation {
         const ahead = c.s - 1 - sOnConn;
         if (ahead < 0 || ahead > 40) continue;
         let stop = false;
-        if (this.zoneOccupied(c)) stop = true;
+        // A car moving through a merge ahead of us is one to follow, not to stop for.
+        if (this.zoneOccupied(c, this.followsThrough(conn, c) ? QUEUED_SPEED : Infinity)) stop = true;
         else if (c.yields && ahead > stoppingDistance(veh.v, STOP_DECEL)) {
           const [arrive, clear] = this.conflictWindow(veh, conn, c, -sOnConn);
-          stop = this.trafficConflicts(veh, c, arrive, clear, true);
+          // Already rolling into the gap, a driver only backs out if it has truly closed.
+          stop = this.trafficConflicts(veh, c, arrive, clear, true, true);
         }
         if (stop) {
           obstacle(ahead, 0);
@@ -979,6 +1112,7 @@ export class Simulation {
     const net = this.network;
     const signal = connectorSignal(this.clock, conn);
     veh.holdAt = null;
+    veh.waitsTurn = false;
     if (signal === 'red') return !canStop && veh.committed;
     if (signal === 'amber' && canStop) return false;
 
@@ -999,16 +1133,22 @@ export class Simulation {
     }
 
     const ordered = [...conn.conflicts].sort((a, b) => a.s - b.s);
+    // Held only by someone already crossing in front of us, and nothing else: we're next.
+    let reserved = false;
     for (const c of ordered) {
       const [arrive, clear] = this.conflictWindow(veh, conn, c, d);
       // Never pull into the path of someone in the junction, priority or not, if we'd get there
       // while they are still in it. A car far up the road keeps going if they're moving: they'll be
       // gone by then. But if they're stuck, don't enter the box: we'd only get stuck behind them
       // and help knot the junction (box gridlock).
-      if (this.zoneOccupied(c) && (arrive < OCCUPIED_HORIZON || this.zoneOccupied(c, QUEUED_SPEED))) return false;
+      if (this.zoneOccupied(c) && ((arrive < OCCUPIED_HORIZON && !this.followsThrough(conn, c)) || this.zoneOccupied(c, QUEUED_SPEED))) {
+        if (c.yields) return false;
+        reserved = true;
+        continue;
+      }
       if (!c.yields) {
         // Having priority still means respecting a driver who has already committed to the gap.
-        if (this.trafficConflicts(veh, c, arrive, clear, false)) return false;
+        if (this.trafficConflicts(veh, c, arrive, clear, false)) reserved = true;
         continue;
       }
       if (!this.trafficConflicts(veh, c, arrive, clear, true)) continue;
@@ -1019,22 +1159,29 @@ export class Simulation {
       const waitAt = ordered.find((w) => w.yields && w.kind === 'cross' && w.s >= veh.length && w.s <= c.s);
       veh.holdAt = waitAt?.s ?? c.s;
       const pullForward = this.clock !== null && signal === 'green' && !!waitAt && this.connVehicles[conn.idx]!.length === 0;
-      if (!pullForward) return false;
+      if (!pullForward || reserved) return false;
       break;
     }
 
     for (const x of conn.crosswalkCrossings) {
       const cw = net.crosswalks[x.crosswalk]!;
+      // The crossing at the far side of the junction is for later: we'll give way there if we must, as
+      // long as there's room to wait short of it. Only someone already on it near our path holds us here.
+      const later = x.s - cw.width / 2 > veh.length + LATER_CROSSING;
       // On a zebra, waiting pedestrians have right of way too.
-      if (this.pedestriansNear(x.crosswalk, x.sCrosswalk, PED_CLEARANCE + 2, cw.type === 'zebra')) return false;
+      if (this.pedestriansNear(x.crosswalk, x.sCrosswalk, PED_CLEARANCE + (later ? 0 : 2), cw.type === 'zebra' && !later)) return false;
     }
-    return true;
+    veh.waitsTurn = reserved;
+    return !reserved;
   }
 
   /** When this vehicle would reach and clear conflict c, given its distance to the start of its connector. */
   private conflictWindow(veh: Vehicle, conn: Connector, c: ConflictRef, toConnector: number): [number, number] {
-    const arrive = timeToTravel(Math.max(0, toConnector + c.s), veh.v, GAP_ACCEL, conn.speedLimit);
-    const clear = timeToTravel(toConnector + c.sEnd + veh.length, veh.v, GAP_ACCEL, conn.speedLimit);
+    // Pulling out into a gap, drivers put their foot down: past their usual acceleration, as far as the engine allows.
+    const accel = veh.kind === 'car' ? GAP_ACCEL : HEAVY_GAP_ACCEL;
+    const arrive = timeToTravel(Math.max(0, toConnector + c.s), veh.v, accel, conn.speedLimit);
+    // Merging, we're clear once our rear is into the shared lane: whoever comes after just follows us.
+    const clear = timeToTravel(toConnector + (c.kind === 'merge' ? c.s : c.sEnd) + veh.length, veh.v, accel, conn.speedLimit);
     return [arrive, clear];
   }
 
@@ -1043,7 +1190,7 @@ export class Simulation {
    * Yielding: every driver who may arrive counts, except those already told to wait at their own line.
    * Not yielding: only drivers who have committed to crossing count.
    */
-  private trafficConflicts(veh: Vehicle, c: ConflictRef, myArrive: number, myClear: number, yielding: boolean): boolean {
+  private trafficConflicts(veh: Vehicle, c: ConflictRef, myArrive: number, myClear: number, yielding: boolean, going = false): boolean {
     const net = this.network;
     const other = net.connectors[c.other]!;
     const otherIn = net.lanes[other.inLane]!;
@@ -1053,16 +1200,25 @@ export class Simulation {
     const accel = yielding ? PRIORITY_ACCEL : GAP_ACCEL;
 
     const zoneLength = c.sOtherEnd - c.sOther;
+    const followable = this.followsThrough(net.connectors[veh.connector]!, c);
+    // Drivers differ in the gaps they accept, and accept smaller ones the longer they've waited.
+    const impatience = IMPATIENCE * Math.min(1, veh.stoppedFor / IMPATIENT_AFTER);
+    const gapMargin = Math.max(MIN_MARGIN, (c.kind === 'merge' ? MERGE_HEADWAY : CROSS_MARGIN) + veh.gapOffset - impatience);
     /**
      * `distance` is from x's front to the start of the shared stretch on its path. `vmax` is the
      * fastest x can go there: the road's limit on the approach, the curve's limit once in the junction.
      */
     const check = (x: Vehicle, distance: number, vmax: number): boolean => {
       if (distance < -(zoneLength + x.length)) return false; // already cleared the conflict
+      // Merging behind a moving car: once its rear is past where we join, with a headway to spare, we follow it.
+      if (yielding && followable && x.v > QUEUED_SPEED) {
+        const rearPast = distance + x.length <= 0 ? 0 : timeToTravel(distance + x.length, x.v, accel, vmax);
+        if (rearPast + FOLLOW_HEADWAY < myArrive) return false;
+      }
       if (distance < 0.5 && (yielding || myArrive < OCCUPIED_HORIZON)) return true; // inside the zone right now
       const arrive = timeToTravel(Math.max(0, distance), x.v, accel, vmax);
       const clear = timeToTravel(Math.max(0, distance) + zoneLength + x.length, x.v, accel, vmax);
-      const margin = !yielding ? COMMITTED_MARGIN : c.kind === 'merge' ? MERGE_HEADWAY : CROSS_MARGIN;
+      const margin = !yielding || going ? COMMITTED_MARGIN : gapMargin;
       return arrive < myClear + margin && clear + 0.5 > myArrive;
     };
 
@@ -1093,7 +1249,10 @@ export class Simulation {
         // Entering a roundabout, cars still approaching other entries have to give way themselves.
         const ringMerge = !!other.ring && !!net.connectors[veh.connector]!.ring;
         const ringHeld = yielding && this.ringRedAhead(other, -toLine, x.v, c.sOther) !== null;
-        const relevant = yielding ? !held && !refused && !ringHeld && (!ringMerge || x.committed) : x.committed && !holdsBefore(x);
+        // Deciding whether to go, a driver with priority who is only waiting their turn still counts: they go
+        // next. Already rolling in, we ignore them, since they may be waiting for us.
+        const waiting = refused && !(x.waitsTurn && !going);
+        const relevant = yielding ? !held && !waiting && !ringHeld && (!ringMerge || x.committed) : x.committed && !holdsBefore(x);
         if (relevant && check(x, distance, yielding ? otherIn.speedLimit : other.speedLimit)) return true;
       }
       // Everyone queued behind a driver who is stopping at the line is stuck behind them too.
@@ -1139,6 +1298,11 @@ export class Simulation {
     return false;
   }
 
+  /** Whether conflict c is a merge after which we follow the other movement's cars, as on a roundabout's ring. */
+  private followsThrough(conn: Connector, c: ConflictRef): boolean {
+    return c.kind === 'merge' && conn.ringShares.some((r) => r.other === c.other);
+  }
+
   /** A vehicle on the other connector physically occupies the conflict zone (optionally: one slower than `slowerThan`). */
   private zoneOccupied(c: ConflictRef, slowerThan = Infinity): boolean {
     for (const x of this.connVehicles[c.other]!) {
@@ -1154,14 +1318,18 @@ export class Simulation {
     return false;
   }
 
+  /**
+   * Whether pedestrians on (or, with includeWaiting, about to step onto) a crosswalk are near the point
+   * where a vehicle crosses it. Drivers wait for anyone on or about to reach their lane, not for someone
+   * still far across the road or waiting at the far kerb: they're past before that person gets there.
+   */
   private pedestriansNear(crosswalk: number, sCw: number, clearance: number, includeWaiting: boolean): boolean {
     for (const ped of this.pedestrians) {
       if (ped.crosswalk !== crosswalk) continue;
       if (!ped.crossing && !includeWaiting) continue;
       const toPoint = (sCw - ped.s) * ped.dir; // >0: still heading towards the point
       if (Math.abs(sCw - ped.s) < clearance) return true;
-      if (ped.crossing && toPoint > 0 && toPoint < ped.speed * 4) return true;
-      if (!ped.crossing && includeWaiting) return true;
+      if (toPoint > 0 && toPoint < clearance + ped.speed * PED_LOOKAHEAD) return true;
     }
     return false;
   }
@@ -1185,6 +1353,10 @@ export class Simulation {
     veh.v = v;
     veh.s += Math.max(0, ds);
     veh.stoppedFor = v < STOPPED_SPEED ? veh.stoppedFor + dt : 0;
+    if (veh.stopArmed && v < STOPPED_SPEED) {
+      veh.stopArmed = false;
+      if (veh.arrivalTime >= this.metrics.startTime) this.metrics.recordStop(veh.from);
+    } else if (!veh.stopArmed && v > STOP_REARM) veh.stopArmed = true;
 
     const net = this.network;
     if (veh.seg === 0) {
@@ -1246,8 +1418,8 @@ export class Simulation {
     for (const x of cw.crossings) {
       const conn = net.connectors[x.connector]!;
       const inLen = net.lanes[conn.inLane]!.path.length;
-      for (const veh of this.connVehicles[x.connector]!) {
-        const dist = x.s - veh.s;
+      for (const { veh, s } of this.onConnector(x.connector)) {
+        const dist = x.s - s;
         // Clear only once the rear has left the whole crosswalk band.
         if (dist > -(veh.length + cw.width / 2 + 1) && dist < Math.max(8, veh.v * 3)) return false;
       }
@@ -1260,14 +1432,27 @@ export class Simulation {
     return true;
   }
 
+  /**
+   * Vehicles with any part of their body on a connector, and where their front is measured along it:
+   * those on it, and those whose front has reached the exit lane while their rear is still on it.
+   */
+  private onConnector(c: number): Array<{ veh: Vehicle; s: number }> {
+    const conn = this.network.connectors[c]!;
+    const out = this.connVehicles[c]!.map((veh) => ({ veh, s: veh.s }));
+    for (const veh of this.laneVehicles[conn.outLane]!) {
+      if (veh.connector === c && veh.s - veh.length < 0) out.push({ veh, s: conn.path.length + veh.s });
+    }
+    return out;
+  }
+
   private vehicleBlocksPedestrian(ped: Pedestrian): boolean {
     const cw = this.network.crosswalks[ped.crosswalk]!;
     for (const x of cw.crossings) {
       const ahead = (x.sCrosswalk - ped.s) * ped.dir;
       if (ahead < -1.5 || ahead > 2.5) continue;
-      for (const veh of this.connVehicles[x.connector]!) {
+      for (const { veh, s } of this.onConnector(x.connector)) {
         // Any part of the body within the band around this crossing point.
-        if (veh.s > x.s - cw.width / 2 - 0.5 && veh.s - veh.length < x.s + cw.width / 2 + 0.5) return true;
+        if (s > x.s - cw.width / 2 - 0.5 && s - veh.length < x.s + cw.width / 2 + 0.5) return true;
       }
     }
     return false;
@@ -1294,17 +1479,28 @@ export class Simulation {
         veh.seg === 1 ? net.connectors[veh.connector]!.speedLimit : net.lanes[veh.seg === 0 ? veh.inLane : veh.outLane]!.speedLimit;
       const lost = dt * Math.max(0, 1 - veh.v / (free * veh.speedFactor));
       this.lostAll += lost;
-      if (lost > 0 && veh.arrivalTime >= since) this.metrics.addLostTime(veh.from, lost, this.time);
+      if (veh.arrivalTime < since) continue;
+      if (lost > 0) this.metrics.addLostTime(veh.from, lost, this.time);
+      this.metrics.addEmissions(veh.from, co2Rate(veh.kind, veh.v, veh.acc) * dt);
     }
-    // Waiting to even enter the map is all lost time.
+    // Waiting to even enter the map is all lost time, spent idling.
     for (const [leg, queue] of this.backlog) {
       this.lostAll += dt * queue.length;
-      for (const p of queue) if (p.arrivalTime >= since) this.metrics.addLostTime(leg, dt, this.time);
+      for (const p of queue) {
+        if (p.arrivalTime < since) continue;
+        this.metrics.addLostTime(leg, dt, this.time);
+        this.metrics.addEmissions(leg, co2Rate(p.kind, 0, 0) * dt);
+      }
     }
   }
 
   private observeQueues() {
-    for (const [leg, q] of this.currentQueues()) this.metrics.observeQueue(leg, q.queue);
+    // Sampled once a simulated second for the 95th-percentile queue.
+    const sample = this.stepCount % Math.round(1 / this.dt) === 0;
+    for (const [leg, q] of this.currentQueues()) {
+      this.metrics.observeQueue(leg, q.queue);
+      if (sample) this.metrics.sampleQueue(leg, q.queue);
+    }
   }
 
   /**

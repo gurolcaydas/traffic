@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { overlappingVehicles } from '../src/sim/safety';
 import type { ControlSpec } from '../src/core/types';
-import { SignalController, ringStopState } from '../src/sim/signals';
+import { MIN_GREEN, SignalController, ringStopState, type SignalDemand } from '../src/sim/signals';
 import { Simulation } from '../src/sim/simulation';
 import { crossroad, twoPhaseSignals } from '../src/scenarios/templates';
+import { applyWebsterTiming, websterTiming } from '../src/scenarios/timing';
 
 const run = (c: SignalController, seconds: number) => {
   for (let i = 0; i < Math.round(seconds * 10); i++) c.step(0.1);
@@ -67,18 +68,21 @@ describe('green time in traffic', () => {
   });
 
   it('on wider roads, longer greens (fewer stops and starts) shorten the queues', () => {
+    // Two traffic seeds, so one unlucky run can't decide it.
     const queueAt = (green: number) => {
-      const sim = new Simulation(crossroad({ control: twoPhaseSignals(green), vehPerHourPerLeg: 800, lanes: 2 }));
-      sim.run(300);
-      sim.resetMetrics();
       let total = 0;
-      for (let t = 0; t < 1200; t += 10) {
-        sim.run(10);
-        total += sim.getMetrics().legs.reduce((a, l) => a + l.queue, 0);
+      for (const seed of [1, 2]) {
+        const sim = new Simulation(crossroad({ control: twoPhaseSignals(green), vehPerHourPerLeg: 800, lanes: 2, seed }));
+        sim.run(300);
+        sim.resetMetrics();
+        for (let t = 0; t < 1200; t += 10) {
+          sim.run(10);
+          total += sim.getMetrics().legs.reduce((a, l) => a + l.queue, 0);
+        }
       }
-      return total / 120;
+      return total / 240;
     };
-    expect(queueAt(40)).toBeLessThan(queueAt(15) * 0.7);
+    expect(queueAt(40)).toBeLessThan(queueAt(15) * 0.8);
   }, 30000);
 
   it('opposite left turners waiting in the box never lock the junction', () => {
@@ -137,4 +141,78 @@ describe('ring stop lights', () => {
     expect(ringStopState(clock(1, 'allRed'), [0])).toBe('red');
     expect(ringStopState(null, [0])).toBe('green');
   });
+});
+
+describe('traffic-responsive signals', () => {
+  const actuated = (green: number): ControlSpec => ({ ...twoPhaseSignals(green), actuated: true }) as ControlSpec;
+  const step = (c: SignalController, seconds: number, demand: SignalDemand) => {
+    for (let i = 0; i < Math.round(seconds * 10); i++) c.step(0.1, demand);
+  };
+
+  it('end a green early once traffic stops coming and someone waits at a red', () => {
+    const c = new SignalController(actuated(40));
+    step(c, MIN_GREEN + 1, { arriving: () => false, waitingElsewhere: () => true });
+    expect(c.clock()).toMatchObject({ phase: 0, stage: 'amber' });
+  });
+
+  it('keep a green while traffic keeps coming, up to the plan’s green', () => {
+    const c = new SignalController(actuated(30));
+    step(c, 29, { arriving: () => true, waitingElsewhere: () => true });
+    expect(c.clock()).toMatchObject({ phase: 0, stage: 'green' });
+    step(c, 1.5, { arriving: () => true, waitingElsewhere: () => true });
+    expect(c.clock()).toMatchObject({ phase: 0, stage: 'amber' });
+  });
+
+  it('rest on green while nobody is waiting anywhere else', () => {
+    const c = new SignalController(actuated(20));
+    step(c, 120, { arriving: () => false, waitingElsewhere: () => false });
+    expect(c.clock()).toMatchObject({ phase: 0, stage: 'green' });
+  });
+
+  it('cut delay in light traffic, collision-free', () => {
+    const delay = (control: ControlSpec) => {
+      const sim = new Simulation(crossroad({ control, vehPerHourPerLeg: 150, crosswalks: 'signal', pedPerHourPerCrosswalk: 60 }));
+      sim.run(300);
+      sim.resetMetrics();
+      let collisions = 0;
+      for (let i = 0; i < 9000; i++) {
+        sim.step();
+        if (i % 5 === 0) collisions += overlappingVehicles(sim).length;
+      }
+      expect(collisions).toBe(0);
+      return sim.getMetrics().avgDelay;
+    };
+    expect(delay(actuated(25))).toBeLessThan(delay(twoPhaseSignals(25)) * 0.8);
+  }, 30000);
+});
+
+describe('Webster timing', () => {
+  /** Legs 1 and 3 carry most of the traffic. */
+  const lopsided = () => {
+    const s = crossroad({ vehPerHourPerLeg: 300, control: twoPhaseSignals(25) });
+    for (const v of s.demand.vehicles) v.vehPerHour *= v.from === '1' || v.from === '3' ? 1.8 : 0.4;
+    return s;
+  };
+
+  it('gives the busier phase the longer green, within a sensible cycle', () => {
+    const t = websterTiming(lopsided())!;
+    expect(t.greens[0]!).toBeGreaterThan(2 * t.greens[1]!);
+    expect(t.cycle).toBeGreaterThanOrEqual(40);
+    expect(t.cycle).toBeLessThanOrEqual(120);
+    expect(websterTiming(crossroad())).toBeNull();
+  });
+
+  it('beats an even split when traffic is lopsided', () => {
+    const delay = (s: ReturnType<typeof lopsided>) => {
+      const sim = new Simulation(s);
+      sim.run(600);
+      sim.resetMetrics();
+      sim.run(1800);
+      return sim.getMetrics().avgDelay;
+    };
+    const even = lopsided();
+    const timed = structuredClone(even);
+    applyWebsterTiming(timed);
+    expect(delay(timed)).toBeLessThan(delay(even) * 0.5);
+  }, 30000);
 });

@@ -97,6 +97,8 @@ interface AppState {
   setVehicleDemand: (from: string, to: string, vehPerHour: number) => void;
   setPedDemand: (leg: string, pedPerHour: number) => void;
   scaleDemand: (factor: number) => void;
+  /** Share of vehicles that are trucks or buses. */
+  setHeavyShare: (share: number) => void;
   /** Choose a time-of-day pattern (null for flat traffic). Starts its day now. */
   setPattern: (id: string | null) => void;
   setCentreLeg: (leg: string) => void;
@@ -251,6 +253,10 @@ export const useApp = create<AppState>((set, get) => ({
     const s = get().scenario;
     const vehicles = s.demand.vehicles.map((v) => ({ ...v, vehPerHour: Math.max(0, Math.round((v.vehPerHour * factor) / 10) * 10) }));
     set({ scenario: { ...s, demand: { ...s.demand, vehicles } } });
+  },
+  setHeavyShare: (share) => {
+    const s = get().scenario;
+    set({ scenario: { ...s, demand: { ...s.demand, heavyShare: share } } });
   },
   setPattern: (id) => {
     const s = get().scenario;

@@ -33,6 +33,8 @@ const THROUGH_ANGLE = 30;
 const LATERAL_ACCEL = 3.0;
 /** How far the rounded curb return reaches along each road edge from the corner, m. */
 const CURB_RETURN = 5;
+/** Length of a turn pocket, from where it opens to the stop line, m. */
+export const POCKET_LENGTH = 40;
 
 export function buildNetwork(scenario: Scenario): Network {
   const side = scenario.driveSide === 'right' ? 1 : -1;
@@ -53,13 +55,16 @@ export function buildNetwork(scenario: Scenario): Network {
     const fly = flyPartner.has(spec.id) ? 1 : 0;
     const half = g.medianWidth / 2;
     const w = g.laneWidth;
-    const inLane = (key: string, role: LaneRole, index: number, offset: number, end = g.stopLine) =>
-      addLane(key, { leg: spec.id, kind: 'in', role, index, offset, path: new Polyline([along(g, g.length, offset), along(g, end, offset)]), speedLimit: speed, width: w });
+    const inLane = (key: string, role: LaneRole, index: number, offset: number, end = g.stopLine, opensAt = 0) =>
+      addLane(key, { leg: spec.id, kind: 'in', role, index, offset, opensAt, path: new Polyline([along(g, g.length, offset), along(g, end, offset)]), speedLimit: speed, width: w });
     const outLane = (key: string, role: LaneRole, index: number, offset: number, start = g.stopLine) =>
-      addLane(key, { leg: spec.id, kind: 'out', role, index, offset, path: new Polyline([along(g, start, offset), along(g, g.length, offset)]), speedLimit: speed, width: w });
+      addLane(key, { leg: spec.id, kind: 'out', role, index, offset, opensAt: 0, path: new Polyline([along(g, start, offset), along(g, g.length, offset)]), speedLimit: speed, width: w });
 
+    // A turn pocket runs the whole length of the leg, like the lanes beside it, but only opens near the line.
+    const pocket = g.pocketStart !== null ? 1 : 0;
     if (fly) inLane(`${spec.id}/in/fly`, 'flyover', 0, half + 0.5 * w);
-    for (let k = 0; k < spec.lanesIn; k++) inLane(`${spec.id}/in/${k}`, 'regular', k, half + (fly + spec.lanesIn - 1 - k + 0.5) * w);
+    if (pocket) inLane(`${spec.id}/in/pocket`, 'pocket', spec.lanesIn, half + (fly + 0.5) * w, g.stopLine, g.length - g.pocketStart!);
+    for (let k = 0; k < spec.lanesIn; k++) inLane(`${spec.id}/in/${k}`, 'regular', k, half + (fly + pocket + spec.lanesIn - 1 - k + 0.5) * w);
     if (g.slipEdge !== null) inLane(`${spec.id}/in/slip`, 'slip', 0, g.slipEdge - 0.5 * w, g.slipEnd!);
     if (fly) outLane(`${spec.id}/out/fly`, 'flyover', 0, -(half + 0.5 * w));
     for (let k = 0; k < spec.lanesOut; k++) outLane(`${spec.id}/out/${k}`, 'regular', k, -(half + (fly + spec.lanesOut - 1 - k + 0.5) * w));
@@ -139,22 +144,30 @@ export function buildNetwork(scenario: Scenario): Network {
     // turns share the lanes.
     const uTurn = dests.find((d) => d.to.id === from.id);
     dests = dests.filter((d) => d !== uTurn);
-    const k = dests.length;
+    // A turn pocket takes the far-side turns (and the U-turn) off the regular lanes.
+    const pocketLane = laneOf.get(`${from.id}/in/pocket`);
+    const pocketed = pocketLane !== undefined && dests.some((d) => d.turn !== 'far') ? dests.filter((d) => d.turn === 'far') : [];
+    dests = dests.filter((d) => !pocketed.includes(d));
+    const connect = (to: LegSpec, turn: TurnKind, l: number, lo: number, hi: number, inLane: number) => {
+      // A one-lane roundabout has one-lane exits: everyone leaves into the curb lane.
+      const outIndex = rb ? 0 : turn === 'far' ? clamp(to.lanesOut - 1 - (hi - l), 0, to.lanesOut - 1) : clamp(l - lo, 0, to.lanesOut - 1);
+      const outLane = laneOf.get(`${to.id}/out/${outIndex}`)!;
+      // A near-side turn follows the curb return, keeping its lane's distance from the curb.
+      const gTo = legs.get(to.id)!;
+      const curbGap = Math.min(gFrom.inEdge - lanes[inLane]!.offset, gTo.outEdge + lanes[outLane]!.offset);
+      addConnector(from, to, inLane, outLane, turn, 'normal', turn === 'near' ? CURB_RETURN + curbGap : Infinity);
+    };
+    const painted = laneTurnsFor(from, dests);
     dests.forEach(({ to, turn }, rank) => {
-      const lo = Math.floor((rank * n) / k);
-      const hi = Math.max(lo, Math.ceil(((rank + 1) * n) / k) - 1);
-      for (let l = lo; l <= hi; l++) {
-        // A one-lane roundabout has one-lane exits: everyone leaves into the curb lane.
-        const outIndex = rb ? 0 : turn === 'far' ? clamp(to.lanesOut - 1 - (hi - l), 0, to.lanesOut - 1) : clamp(l - lo, 0, to.lanesOut - 1);
-        const inLane = laneOf.get(`${from.id}/in/${l}`)!;
-        const outLane = laneOf.get(`${to.id}/out/${outIndex}`)!;
-        // A near-side turn follows the curb return, keeping its lane's distance from the curb.
-        const gTo = legs.get(to.id)!;
-        const curbGap = Math.min(gFrom.inEdge - lanes[inLane]!.offset, gTo.outEdge + lanes[outLane]!.offset);
-        addConnector(from, to, inLane, outLane, turn, 'normal', turn === 'near' ? CURB_RETURN + curbGap : Infinity);
-      }
+      // The lanes painted for this kind of turn, or an even share of them from the curb outwards.
+      const served = painted ? painted.flatMap((kinds, l) => (kinds.includes(turn) ? [l] : [])) : null;
+      const lo = served ? Math.min(...served) : Math.floor((rank * n) / dests.length);
+      const hi = served ? Math.max(...served) : Math.max(lo, Math.ceil(((rank + 1) * n) / dests.length) - 1);
+      for (let l = lo; l <= hi; l++) if (!served || served.includes(l)) connect(to, turn, l, lo, hi, laneOf.get(`${from.id}/in/${l}`)!);
     });
-    if (uTurn) addConnector(from, from, laneOf.get(`${from.id}/in/${n - 1}`)!, laneOf.get(`${from.id}/out/0`)!, uTurn.turn, 'normal', Infinity);
+    for (const { to, turn } of pocketed) connect(to, turn, n, n, n, pocketLane!);
+    const uLane = pocketed.length ? pocketLane! : laneOf.get(`${from.id}/in/${n - 1}`)!;
+    if (uTurn) addConnector(from, from, uLane, laneOf.get(`${from.id}/out/0`)!, uTurn.turn, 'normal', Infinity);
   }
 
   assignSignalPhases(scenario, connectors);
@@ -166,6 +179,16 @@ export function buildNetwork(scenario: Scenario): Network {
   const corners = rb ? roundaboutCorners(rb, legs, side) : buildCorners(legs, side);
 
   return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes, corners, roundabout: rb, ringStops: stops };
+}
+
+/**
+ * The leg's painted lane arrows, if they fit its lanes and give every kind of turn still needing a lane
+ * at least one; otherwise null, and the turns are shared out automatically.
+ */
+function laneTurnsFor(leg: LegSpec, dests: Array<{ turn: TurnKind }>): Array<TurnKind[]> | null {
+  const painted = leg.laneTurns;
+  if (!painted || painted.length !== leg.lanesIn) return null;
+  return dests.every((d) => painted.some((kinds) => kinds.includes(d.turn))) ? painted : null;
 }
 
 /** Each leg's flyover partner, for pairs where both legs exist. */
@@ -188,8 +211,10 @@ const SLIP_BUFFER = 1;
 function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<string, string>, rb: RoundaboutGeometry | null): Map<string, LegGeometry> {
   const specs = [...scenario.legs].sort((a, b) => norm360(a.angle) - norm360(b.angle));
   const fly = (s: LegSpec) => (flyPartner.has(s.id) ? 1 : 0);
+  // A turn pocket only makes sense where traffic crosses: not on a roundabout, nor on a leg with one lane in.
+  const pocket = (s: LegSpec) => (s.turnPocket && !rb && s.lanesIn > 0 ? 1 : 0);
   const halfWidth = (s: LegSpec) =>
-    (s.medianWidth ?? DEFAULTS.medianWidth) / 2 + (fly(s) + Math.max(s.lanesIn, s.lanesOut)) * (s.laneWidth ?? DEFAULTS.laneWidth);
+    (s.medianWidth ?? DEFAULTS.medianWidth) / 2 + (fly(s) + Math.max(s.lanesIn + pocket(s), s.lanesOut)) * (s.laneWidth ?? DEFAULTS.laneWidth);
   const hasCrosswalk = new Set(scenario.crosswalks.map((c) => c.leg));
   // A slip lane leads to the neighbouring leg on the near side (counter-clockwise in right-hand traffic).
   const slipTarget = new Map<string, string>();
@@ -221,7 +246,7 @@ function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<stri
     const laneWidth = spec.laneWidth ?? DEFAULTS.laneWidth;
     // Roundabout legs get a splitter island between their entry and exit lanes.
     const medianWidth = Math.max(spec.medianWidth ?? DEFAULTS.medianWidth, rb ? SPLITTER_WIDTH : 0);
-    const inEdge = medianWidth / 2 + (fly(spec) + spec.lanesIn) * laneWidth;
+    const inEdge = medianWidth / 2 + (fly(spec) + pocket(spec) + spec.lanesIn) * laneWidth;
     const outEdge = medianWidth / 2 + (fly(spec) + spec.lanesOut) * laneWidth;
     const slip = slipTarget.has(spec.id);
     const slipIn = slipSource.has(spec.id);
@@ -240,7 +265,8 @@ function buildLegGeometry(scenario: Scenario, side: number, flyPartner: Map<stri
       slipOutEdge: slipIn ? outEdge + SLIP_BUFFER + laneWidth : null,
       slipOutStart: slipIn ? stopLine + SLIP_SETBACK : null,
       slipTarget: slipTarget.get(spec.id) ?? null,
-      length: Math.max(spec.length, stopLine + SLIP_SETBACK + 10),
+      pocketStart: pocket(spec) ? stopLine + POCKET_LENGTH : null,
+      length: Math.max(spec.length, stopLine + SLIP_SETBACK + 10, pocket(spec) ? stopLine + POCKET_LENGTH + 30 : 0),
       laneWidth,
       medianWidth,
     });

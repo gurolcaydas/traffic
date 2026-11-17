@@ -10,6 +10,7 @@ npm run dev        # app at http://localhost:5173
 npm test           # Vitest; the simulation and level tests take a minute or so
 npm run typecheck
 npm run sim        # sample junctions run headless, metrics printed
+npm run calibrate  # the model against standard traffic-engineering results
 ```
 
 Run `npm run typecheck` and `npm test` before calling a change done. For UI changes, also look at the app in a browser, in both light and dark mode, in both EN and TR, and at phone width.
@@ -31,6 +32,7 @@ Everything starts from a **`Scenario`** ([src/core/types.ts](src/core/types.ts))
   - Never make a draw depend on the design, for example drawing only for vehicles that reach the map.
 - **Edits apply under running traffic.** `Simulation.applyScenario` remaps live vehicles onto the new network. Any new feature that changes the network needs a remap story, and a test that edits mid-run and checks the vehicle bookkeeping: `arrived = exited + onMap + backlog + diverted + removed`.
 - **Both drive sides.** `driveSide: 'left'` mirrors everything. New geometry or turn rules must work in both. Think in "near side" and "far side" turns, and derive the direction from the drive side (as `side` does in [src/network/build.ts](src/network/build.ts)). Never hard-code left or right.
+- **The model is calibrated.** `tests/realism.test.ts` checks saturation flow, Webster delay, HCM roundabout entry capacity and gap-acceptance capacity ([src/sim/calibration.ts](src/sim/calibration.ts)). A change to driving or right-of-way rules that breaks these is making junctions less like real ones. Run `npm run calibrate` to see the whole comparison.
 - **The levels are calibrated.** [src/game/levels.ts](src/game/levels.ts) sets star thresholds against the current simulation. The tests in `tests/game.test.ts` check that each level fails as given and that the known solutions pass. If a simulation change breaks them, re-check the calibration (run every level's starting design) before you loosen a test.
 - **Gridlock and overload are different things.**
   - Gridlock: nobody has entered or left the junction for 60 s while drivers could go. It fails a level.
@@ -76,6 +78,11 @@ All user-visible text goes through `t(english, turkish)` from [src/core/i18n.ts]
   | zebra | çizgili |
   | signalised crossing | ışıklı |
   | side road | serbest dönüş yolu |
+  | turn pocket | dönüş cebi |
+  | lane arrows | şerit okları |
+  | traffic-responsive (signals) | trafiğe duyarlı |
+  | trucks and buses | kamyon ve otobüs |
+  | peak hour | zirve saat |
   | flyover | üst geçit |
   | phase | faz |
   | cycle | devre |
@@ -111,12 +118,16 @@ Done:
 - shape editor, templates and saved designs
 - OpenStreetMap import
 - English and Turkish
+- calibration against standard traffic-engineering results
+- Webster signal timing and traffic-responsive signals
+- trucks and buses, and varied gap acceptance
+- turn pockets and lane arrows
+- stops, CO₂, 95th-percentile queues and per-approach level of service
 
 Ideas not started:
 - **Sharing a design by link** (the planned Phase 6): a compressed scenario in the URL hash, with no server
 - **Undo/redo**
-- **Traffic-responsive signals** and automatic signal timing (Webster)
 - **Two-lane plain roundabouts** (lit roundabouts already have a two-lane ring)
-- **Trucks and buses**
 - **Splitting `simulation.ts`** into lane changing, priority and pedestrians
-- **Checking the zebra rule:** even 300 pedestrians/h per crossing halves an uncontrolled crossroad's flow, which may be too strict
+- **Pedestrians crossing in groups** at zebras. Drivers already wait only for pedestrians near their own lane. Near capacity, though, busy zebras still cut an uncontrolled junction's flow sharply.
+- **Wrong-lane drivers deadlocking at the line:** two drivers side by side, each in the lane the other wants, wait until one gives up after 45 s. Swapping them makes the bodies pass through each other, so that needs a real fix.
