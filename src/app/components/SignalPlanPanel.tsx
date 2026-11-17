@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { t } from '../../core/i18n';
 import { legColor } from '../../render/theme';
 import {
@@ -40,9 +41,10 @@ export function SignalPlanPanel() {
   const clock = useApp((s) => s.clock);
   const edit = useApp((s) => s.edit);
   const rules = useRules();
+  // Rebuilds the network, so only when the design or traffic changes: this panel re-renders with every tick of the lights.
+  const webster = useMemo(() => websterTiming(scenario), [scenario]);
   if (scenario.control.type !== 'signals' || !rules.signalPlan) return null;
   const { phases, ring, actuated } = scenario.control;
-  const webster = websterTiming(scenario);
   const legIndex = (id: string) => scenario.legs.findIndex((l) => l.id === id);
   const signalCrossings = scenario.crosswalks.filter((c) => c.type === 'signal');
   const cycle = phases.reduce((s, p) => s + p.green + 5, 0);
