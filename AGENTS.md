@@ -69,6 +69,7 @@ All user-visible text goes through `t(english, turkish)` from [src/core/i18n.ts]
   | lane | şerit |
   | junction | kavşak |
   | roundabout | dönel kavşak |
+  | lit (signalised) roundabout | ışıklı dönel kavşak |
   | traffic lights | trafik ışıkları / ışıklar |
   | yield to right | sağdan gelen |
   | major road | ana yol |
@@ -115,7 +116,7 @@ Ideas not started:
 - **Sharing a design by link** (the planned Phase 6): a compressed scenario in the URL hash, with no server
 - **Undo/redo**
 - **Traffic-responsive signals** and automatic signal timing (Webster)
-- **Two-lane roundabouts**
+- **Two-lane plain roundabouts** (lit roundabouts already have a two-lane ring)
 - **Trucks and buses**
 - **Splitting `simulation.ts`** into lane changing, priority and pedestrians
 - **Checking the zebra rule:** even 300 pedestrians/h per crossing halves an uncontrolled crossroad's flow, which may be too strict

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { overlappingVehicles } from '../src/sim/safety';
 import type { ControlSpec } from '../src/core/types';
-import { SignalController } from '../src/sim/signals';
+import { SignalController, ringStopState } from '../src/sim/signals';
 import { Simulation } from '../src/sim/simulation';
 import { crossroad, twoPhaseSignals } from '../src/scenarios/templates';
 
@@ -122,5 +122,19 @@ describe('green time in traffic', () => {
     next.control = twoPhaseSignals(45);
     sim.applyScenario(next);
     expect(sim.clock).toMatchObject({ phase: before.phase, stage: before.stage });
+  });
+});
+
+describe('ring stop lights', () => {
+  const clock = (phase: number, stage: 'green' | 'amber' | 'allRed', next = (phase + 1) % 2) => ({ phase, next, stage, remaining: 1 });
+
+  it('are red while their entry has green, and clear before it gets green', () => {
+    // The entry is green in phase 0.
+    expect(ringStopState(clock(0, 'green'), [0])).toBe('red');
+    expect(ringStopState(clock(0, 'amber'), [0])).toBe('red');
+    expect(ringStopState(clock(1, 'green'), [0])).toBe('green');
+    expect(ringStopState(clock(1, 'amber'), [0])).toBe('amber');
+    expect(ringStopState(clock(1, 'allRed'), [0])).toBe('red');
+    expect(ringStopState(null, [0])).toBe('green');
   });
 });

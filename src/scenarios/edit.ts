@@ -1,13 +1,13 @@
 // Edits a player can make to a running junction. Each takes a draft Scenario and changes it in place;
 // the store clones before calling, so these never touch live state.
-import type { CrosswalkType, LegId, Movement, Scenario, SignalPhase } from '../core/types';
+import { hasRing, type CrosswalkType, type LegId, type Movement, type Scenario, type SignalPhase } from '../core/types';
 import { buildNetwork } from '../network/build';
 import { autoSignalPlan, type ControlChoice } from './setup';
 
 export type CrossingChoice = 'none' | CrosswalkType;
 
 export function controlChoice(s: Scenario): ControlChoice {
-  if (s.control.type === 'signals') return 'signals';
+  if (s.control.type === 'signals') return s.control.ring ? 'signalRoundabout' : 'signals';
   if (s.control.type === 'roundabout') return 'roundabout';
   return s.control.major.length ? 'major' : 'right';
 }
@@ -16,6 +16,7 @@ export function setControl(s: Scenario, choice: ControlChoice, green = 25) {
   if (choice === 'right') s.control = { type: 'priority', major: [] };
   else if (choice === 'major') s.control = { type: 'priority', major: straightestPair(s) };
   else if (choice === 'roundabout') s.control = { type: 'roundabout' };
+  else if (choice === 'signalRoundabout') s.control = { type: 'signals', ring: true, phases: autoSignalPlan(s.legs, green) };
   else s.control = { type: 'signals', phases: autoSignalPlan(s.legs, green) };
 }
 
@@ -65,7 +66,7 @@ export function sideRoadCandidates(s: Scenario): Array<{ from: LegId; to: LegId 
   const sorted = [...s.legs].sort((a, b) => norm360(a.angle) - norm360(b.angle));
   const side = s.driveSide === 'right' ? 1 : -1;
   const all = sorted.map((leg, i) => ({ from: leg.id, to: sorted[(i + side + sorted.length) % sorted.length]!.id }));
-  if (s.control.type !== 'roundabout') return all;
+  if (!hasRing(s.control)) return all;
   // Round a roundabout, only where the side road fits outside the ring.
   const net = buildNetwork({ ...s, legs: s.legs.map((l) => ({ ...l, slipLane: true })) });
   return all.filter(({ from }) => net.legs.get(from)?.slipEdge !== null);
@@ -110,6 +111,9 @@ export function applyPlanPreset(s: Scenario, preset: PlanPreset, green = 25) {
       movements: [{ from: leg.id, to: '*' as const }],
       pedestrians: s.legs.filter((l) => l !== leg).map((l) => l.id),
     }));
+  } else if (s.control.type === 'signals' && s.control.ring) {
+    // Round a ring every entry goes as a whole, so there are no turns to protect.
+    phases = autoSignalPlan(s.legs, green);
   } else {
     // Opposite legs together, first straight on and near-side turns, then their far-side turns on their own.
     const net = buildNetwork(s);
@@ -127,7 +131,8 @@ export function applyPlanPreset(s: Scenario, preset: PlanPreset, green = 25) {
       return turns.length ? [main, { green: Math.max(10, Math.round(green / 2)), movements: turns, pedestrians: [] }] : [main];
     });
   }
-  s.control = { type: 'signals', phases };
+  const ring = s.control.type === 'signals' && s.control.ring;
+  s.control = ring ? { type: 'signals', ring: true, phases } : { type: 'signals', phases };
   syncSignalPedestrians(s);
 }
 
@@ -142,6 +147,14 @@ export function toggleMovementInPhase(s: Scenario, phaseIndex: number, move: Mov
   const current = phaseMovements(s, phase);
   const has = current.some((m) => m.from === move.from && m.to === move.to);
   phase.movements = has ? current.filter((m) => !(m.from === move.from && m.to === move.to)) : [...current, move];
+}
+
+/** On a signalised roundabout: give a leg's entry green in a phase, or take it away. */
+export function toggleEntryInPhase(s: Scenario, phaseIndex: number, leg: LegId) {
+  if (s.control.type !== 'signals') return;
+  const phase = s.control.phases[phaseIndex]!;
+  const on = phase.movements.some((m) => m.from === leg);
+  phase.movements = on ? phase.movements.filter((m) => m.from !== leg) : [...phase.movements, { from: leg, to: '*' }];
 }
 
 export function togglePedInPhase(s: Scenario, phaseIndex: number, leg: LegId) {

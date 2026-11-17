@@ -98,11 +98,20 @@ export type ControlSpec =
       amber?: number;
       /** Seconds of all-red after each amber. Default 2. */
       allRed?: number;
+      /**
+       * A signalised roundabout, as at many big Turkish junctions: the phases light each leg's entry,
+       * and a second stop line on the ring just before each entry holds circulating traffic (left
+       * turners going round the island) while that entry has green.
+       */
+      ring?: boolean;
     }
   | {
       /** One-lane roundabout: entering traffic gives way to traffic already circulating. */
       type: 'roundabout';
     };
+
+/** Whether traffic goes round a central island: a roundabout, signalised or not. */
+export const hasRing = (control: ControlSpec) => control.type === 'roundabout' || (control.type === 'signals' && !!control.ring);
 
 export interface Scenario {
   version: 1;

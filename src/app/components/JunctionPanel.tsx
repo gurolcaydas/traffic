@@ -24,6 +24,7 @@ const CONTROL_LABEL = {
   major: () => t('major road', 'ana yol'),
   signals: () => t('signals', 'trafik ışıkları'),
   roundabout: () => t('roundabout', 'dönel kavşak'),
+  signalRoundabout: () => t('roundabout with lights', 'ışıklı dönel kavşak'),
 } as const;
 
 export function JunctionPanel() {
@@ -77,6 +78,14 @@ export function JunctionPanel() {
             { value: 'major' as const, label: t('Major road', 'Ana yol'), title: t('The straightest road has priority', 'En düz yolun önceliği vardır') },
             { value: 'signals' as const, label: t('Signals', 'Işıklar') },
             { value: 'roundabout' as const, label: t('Roundabout', 'Dönel kavşak'), title: t('Entering traffic gives way to traffic already on the ring', 'Giren araçlar, kavşağın içindekilere yol verir') },
+            {
+              value: 'signalRoundabout' as const,
+              label: t('Lit roundabout', 'Işıklı dönel'),
+              title: t(
+                'A big two-lane ring with traffic lights at each entry and on the ring. Left turners go round the island in the inner lane and wait at the ring lights.',
+                'Her girişte ve dönel kavşağın içinde ışıklar olan büyük, iki şeritli bir dönel kavşak. Sola dönenler iç şeritte adanın etrafından dolaşır ve içerideki ışıklarda bekler.',
+              ),
+            },
           ].filter((o) => rules.controls.includes(o.value))}
           onChange={(choice) => edit(`${t('Control', 'Kontrol')}: ${CONTROL_LABEL[choice]()}`, (d) => setControl(d, choice))}
         />
@@ -170,11 +179,11 @@ function QuickSwitches() {
   const edit = useApp((s) => s.edit);
   const rules = useRules();
   const lastCrossings = useRef<Scenario['crosswalks']>([]);
-  const lastControl = useRef<Exclude<ReturnType<typeof controlChoice>, 'signals'>>('major');
+  const lastControl = useRef<Exclude<ReturnType<typeof controlChoice>, 'signals' | 'signalRoundabout'>>('major');
 
   const walkers = scenario.crosswalks.length > 0;
   const lights = scenario.control.type === 'signals';
-  const otherControls = rules.controls.filter((c) => c !== 'signals');
+  const otherControls = rules.controls.filter((c): c is typeof lastControl.current => c !== 'signals' && c !== 'signalRoundabout');
   const canLights = rules.controls.includes('signals') && otherControls.length > 0;
   if (rules.inLevel && !canLights) return null;
 
@@ -195,7 +204,9 @@ function QuickSwitches() {
 
   const toggleLights = () => {
     if (lights) {
-      const back = otherControls.includes(lastControl.current) ? lastControl.current : otherControls[0]!;
+      // Lights off a lit roundabout leave the roundabout.
+      const ring = scenario.control.type === 'signals' && scenario.control.ring && otherControls.includes('roundabout');
+      const back = ring ? 'roundabout' : otherControls.includes(lastControl.current) ? lastControl.current : otherControls[0]!;
       edit(t('Traffic lights off', 'Trafik ışıkları kapalı'), (d) => {
         setControl(d, back);
         // Crossings with lights need lights: they become zebras.
@@ -204,9 +215,11 @@ function QuickSwitches() {
       return;
     }
     const was = controlChoice(scenario);
-    if (was !== 'signals') lastControl.current = was;
+    if (was !== 'signals' && was !== 'signalRoundabout') lastControl.current = was;
+    // Lights on a roundabout keep the roundabout, where that's allowed.
+    const choice = was === 'roundabout' && rules.controls.includes('signalRoundabout') ? 'signalRoundabout' : 'signals';
     edit(t('Traffic lights on', 'Trafik ışıkları açık'), (d) => {
-      setControl(d, 'signals');
+      setControl(d, choice);
       for (const c of d.crosswalks) if (c.type === 'zebra') setCrossing(d, c.leg, 'signal');
     });
   };

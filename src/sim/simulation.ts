@@ -5,7 +5,7 @@ import { movementKey, type ConflictRef, type Connector, type Network } from '../
 import { demandFactor, maxDemandFactor, pedFactor } from '../scenarios/patterns';
 import { DEFAULT_IDM, MAX_DECEL, idm, stoppingDistance, timeToTravel, type IdmParams } from './kinematics';
 import { MetricsCollector, type MetricsSnapshot } from './metrics';
-import { SignalController, connectorSignal, stateFor, type SignalClock } from './signals';
+import { SignalController, connectorSignal, ringStopState, stateFor, type SignalClock } from './signals';
 
 /** Where a vehicle is on its route: approach lane, junction connector, exit lane. */
 export type Segment = 0 | 1 | 2;
@@ -894,6 +894,12 @@ export class Simulation {
           hold = c.s;
         }
       }
+      // 5. On a signalised roundabout, stop at a red line on the ring.
+      const ringRed = veh.seg === 1 ? this.ringRedAhead(conn, sOnConn, veh.v) : null;
+      if (ringRed !== null) {
+        obstacle(ringRed - sOnConn, 0);
+        hold = Math.min(hold ?? Infinity, ringRed);
+      }
       veh.holdAt = hold;
       for (const x of conn.crosswalkCrossings) {
         const ahead = x.s - net.crosswalks[x.crosswalk]!.width / 2 - 1 - sOnConn;
@@ -985,6 +991,13 @@ export class Simulation {
       if (room < veh.length + 2) return false;
     }
 
+    // On a signalised ring, traffic queues on the ring at red lines. Joining with no room to get clear
+    // of the entry would stop us across it, and a ring that fills all the way round locks solid.
+    if (conn.ring && net.ringStops.length) {
+      const leader = this.leaderOf(veh);
+      if (leader && leader.v < QUEUED_SPEED && leader.gap < d + conn.ring.start + veh.length + 2) return false;
+    }
+
     const ordered = [...conn.conflicts].sort((a, b) => a.s - b.s);
     for (const c of ordered) {
       const [arrive, clear] = this.conflictWindow(veh, conn, c, d);
@@ -1063,6 +1076,8 @@ export class Simulation {
       // waiting on us). Waiting for them could lock the junction. If they move off, they count again.
       if (yielding && x.v < QUEUED_SPEED && c.sOther - x.s > 2 && ((x.holdAt !== null && x.holdAt <= c.sOther) || this.behindStopped(x))) continue;
       if (holdsBefore(x)) continue;
+      // Held at a red line on the ring before reaching us.
+      if (yielding && this.ringRedAhead(other, x.s, x.v, c.sOther) !== null) continue;
       if (check(x, c.sOther - x.s, other.speedLimit)) return true;
     }
     for (const x of this.laneVehicles[other.inLane]!) {
@@ -1077,13 +1092,30 @@ export class Simulation {
         const held = otherSignal === 'red' && !x.committed;
         // Entering a roundabout, cars still approaching other entries have to give way themselves.
         const ringMerge = !!other.ring && !!net.connectors[veh.connector]!.ring;
-        const relevant = yielding ? !held && !refused && (!ringMerge || x.committed) : x.committed && !holdsBefore(x);
+        const ringHeld = yielding && this.ringRedAhead(other, -toLine, x.v, c.sOther) !== null;
+        const relevant = yielding ? !held && !refused && !ringHeld && (!ringMerge || x.committed) : x.committed && !holdsBefore(x);
         if (relevant && check(x, distance, yielding ? otherIn.speedLimit : other.speedLimit)) return true;
       }
       // Everyone queued behind a driver who is stopping at the line is stuck behind them too.
       if (refused) break;
     }
     return false;
+  }
+
+  /**
+   * Where a driver on `conn` (front at `sOnConn` along it) will stop for a red line on a signalised
+   * roundabout's ring, before `before`; null if no such line holds them.
+   */
+  private ringRedAhead(conn: Connector, sOnConn: number, v: number, before = Infinity): number | null {
+    for (const rs of conn.ringStops) {
+      if (rs.s > before) break;
+      const ahead = rs.s - sOnConn;
+      if (ahead < 0) continue;
+      const state = ringStopState(this.clock, this.network.ringStops[rs.stop]!.entryPhases);
+      if (state === 'red' && ahead > stoppingDistance(v, MAX_DECEL)) return rs.s;
+      if (state === 'amber' && ahead > stoppingDistance(v, STOP_DECEL) + 0.5) return rs.s;
+    }
+    return null;
   }
 
   /** Whether a vehicle in the box is right behind a stopped vehicle that shares its path there. */
@@ -1282,7 +1314,9 @@ export class Simulation {
   private watchForGridlock(dt: number) {
     const net = this.network;
     const couldGo = this.vehicles.some(
-      (v) => v.seg === 1 || (v.seg === 0 && connectorSignal(this.clock, net.connectors[v.connector]!) === 'green'),
+      (v) =>
+        (v.seg === 1 && this.ringRedAhead(net.connectors[v.connector]!, v.s, v.v) === null) ||
+        (v.seg === 0 && connectorSignal(this.clock, net.connectors[v.connector]!) === 'green'),
     );
     this.stalledFor = this.progressed || !couldGo ? 0 : this.stalledFor + dt;
     this.progressed = false;

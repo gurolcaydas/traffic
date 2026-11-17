@@ -1,4 +1,5 @@
 import { t } from '../../core/i18n';
+import { hasRing } from '../../core/types';
 import { legColor } from '../../render/theme';
 import { PATTERNS } from '../../scenarios/patterns';
 import { useRules } from '../levelRules';
@@ -30,7 +31,7 @@ export function DemandPanel() {
   const total = demand.vehicles.reduce((s, d) => s + d.vehPerHour, 0);
   const banned = (from: string, to: string) => legs.find((l) => l.id === from)?.banned?.includes(to) ?? false;
   // U-turns need a roundabout to go round. Without one, any U-turn trips divert elsewhere.
-  const roundabout = scenario.control.type === 'roundabout';
+  const roundabout = hasRing(scenario.control);
 
   return (
     <section className="panel">

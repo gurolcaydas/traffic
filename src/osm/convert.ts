@@ -159,8 +159,12 @@ export function osmToScenario(elements: OsmElement[], point: { lat: number; lon:
   const tagged = (want: (t: Record<string, string>) => boolean) =>
     [...nodes.values()].filter((n) => n.tags && want(n.tags) && dist(local(n), center) <= 40);
   let control: ControlSpec;
-  if (roundabout) control = { type: 'roundabout' };
-  else if (tagged((t) => t.highway === 'traffic_signals').length > 0) {
+  const signalled = tagged((t) => t.highway === 'traffic_signals').length > 0;
+  if (roundabout && signalled) {
+    control = { type: 'signals', ring: true, phases: autoSignalPlan(legSpecs, 25) };
+    notes.push(t('A roundabout with traffic lights; their timing is a standard two-phase guess.', 'Işıklı bir dönel kavşak; süreleri standart iki fazlı bir tahmindir.'));
+  } else if (roundabout) control = { type: 'roundabout' };
+  else if (signalled) {
     control = { type: 'signals', phases: autoSignalPlan(legSpecs, 25) };
     notes.push(t('Traffic lights found; their timing is a standard two-phase guess.', 'Trafik ışıkları bulundu; süreleri standart iki fazlı bir tahmindir.'));
   } else {

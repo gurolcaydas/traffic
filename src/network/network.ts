@@ -103,10 +103,30 @@ export interface Connector {
    * follow each other like cars in one lane.
    */
   ringShares: Array<{ other: number; from: number; to: number; offset: number }>;
+  /** On a signalised roundabout: the ring stop lines this movement passes (index into Network.ringStops) and where. */
+  ringStops: Array<{ stop: number; s: number }>;
+}
+
+/** A signalised roundabout's stop line on the ring, just before a leg's entry. */
+export interface RingStop {
+  idx: number;
+  /** The leg whose entry it protects. */
+  leg: LegId;
+  /** Angle of the line round the ring, in the direction of travel. */
+  angle: number;
+  /** Centre of the line on the ring's centreline, and the direction of travel there. */
+  point: Vec2;
+  heading: Vec2;
+  /** Phases in which the leg's entry has green; the ring line is red then. */
+  entryPhases: number[];
 }
 
 export interface RingSpan {
-  /** Ring coordinates (arc length round the ring centreline, in the direction of travel). */
+  /** Ring lane driven: 0 = outer (the only lane on a plain roundabout), 1 = inner. */
+  lane: number;
+  /** Radius of that lane's centreline. */
+  radius: number;
+  /** Ring coordinates (arc length round the lane's centreline, in the direction of travel). */
   entry: number;
   /** Arc length driven on the ring. */
   length: number;
@@ -126,6 +146,8 @@ export interface RoundaboutGeometry {
   outerRadius: number;
   /** +1 counter-clockwise (right-hand traffic), -1 clockwise. */
   direction: number;
+  /** Ring lanes: 1 on a plain roundabout, 2 on a signalised one. */
+  lanes: number;
 }
 
 export interface Crosswalk {
@@ -152,6 +174,8 @@ export interface Network {
   /** Curb returns between neighbouring legs, as polylines from one leg's edge round to the next. */
   corners: Vec2[][];
   roundabout: RoundaboutGeometry | null;
+  /** Stop lines on a signalised roundabout's ring; empty otherwise. */
+  ringStops: RingStop[];
 }
 
 export const movementKey = (from: LegId, to: LegId) => `${from}>${to}`;

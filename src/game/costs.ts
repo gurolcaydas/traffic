@@ -1,7 +1,7 @@
 // What a design costs, relative to how the level started. Only additions cost money: taking
 // something away is free (and earns nothing back), and retiming signals is free.
 import { t } from '../core/i18n';
-import type { Scenario } from '../core/types';
+import { hasRing, type Scenario } from '../core/types';
 import { crossingOf } from '../scenarios/edit';
 import type { CostItem } from './types';
 
@@ -29,9 +29,10 @@ export function costItems(start: Scenario, now: Scenario): CostItem[] {
   }
   if (lanes) items.push({ label: t(`${lanes} extra lane${lanes > 1 ? 's' : ''}`, `${lanes} ek şerit`), cost: lanes * COSTS.lane });
 
+  // A signalised roundabout is both: the ring and the lights.
+  if (hasRing(now.control) && !hasRing(start.control)) items.push({ label: t('Roundabout', 'Dönel kavşak'), cost: COSTS.roundabout });
   if (now.control.type !== start.control.type) {
     if (now.control.type === 'signals') items.push({ label: t('Traffic signals', 'Trafik ışıkları'), cost: COSTS.signals });
-    if (now.control.type === 'roundabout') items.push({ label: t('Roundabout', 'Dönel kavşak'), cost: COSTS.roundabout });
     if (now.control.type === 'priority' && now.control.major.length) items.push({ label: t('Priority signs', 'Öncelik levhaları'), cost: COSTS.majorRoad });
   } else if (now.control.type === 'priority' && start.control.type === 'priority' && now.control.major.length && !start.control.major.length) {
     items.push({ label: t('Priority signs', 'Öncelik levhaları'), cost: COSTS.majorRoad });

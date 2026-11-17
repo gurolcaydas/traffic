@@ -11,8 +11,8 @@ import {
   scale,
   type Vec2,
 } from '../core/geometry';
-import { DEFAULTS, type LegSpec, type Scenario } from '../core/types';
-import { SPLITTER_WIDTH, entryDistance, ringPath, ringRelations, roundaboutCorners, roundaboutGeometry } from './roundabout';
+import { DEFAULTS, hasRing, type LegSpec, type Scenario } from '../core/types';
+import { SPLITTER_WIDTH, entryDistance, ringPath, ringRelations, ringStops, roundaboutCorners, roundaboutGeometry } from './roundabout';
 import {
   movementKey,
   type ConflictRef,
@@ -37,7 +37,7 @@ const CURB_RETURN = 5;
 export function buildNetwork(scenario: Scenario): Network {
   const side = scenario.driveSide === 'right' ? 1 : -1;
   const flyPartner = flyoverPartners(scenario);
-  const rb = scenario.control.type === 'roundabout' ? roundaboutGeometry(scenario) : null;
+  const rb = hasRing(scenario.control) ? roundaboutGeometry(scenario) : null;
   const legs = buildLegGeometry(scenario, side, flyPartner, rb);
 
   // Lanes. Inbound, from the median outwards: flyover lane, regular lanes, slip lane.
@@ -71,8 +71,10 @@ export function buildNetwork(scenario: Scenario): Network {
   const connectorsFromLane = new Map<number, number[]>();
   const addConnector = (from: LegSpec, to: LegSpec, inLane: number, outLane: number, turn: TurnKind, kind: Connector['kind'], maxRadius: number) => {
     // On a roundabout, ordinary movements go round the ring; slip lanes and flyovers bypass it.
+    // On a two-lane ring, drivers going round the island (far-side turns, U-turns) keep to the inner lane.
+    const ringLane = rb?.lanes === 2 && turn === 'far' ? 1 : 0;
     const onRing = rb && kind === 'normal'
-      ? ringPath(rb, legs.get(from.id)!, lanes[inLane]!.path, legs.get(to.id)!, lanes[outLane]!.path)
+      ? ringPath(rb, legs.get(from.id)!, lanes[inLane]!.path, legs.get(to.id)!, lanes[outLane]!.path, ringLane)
       : null;
     const path = onRing?.path ?? connectorPath(lanes[inLane]!.path, lanes[outLane]!.path, maxRadius);
     const curveSpeed = Math.sqrt(LATERAL_ACCEL * path.minRadius());
@@ -95,6 +97,7 @@ export function buildNetwork(scenario: Scenario): Network {
       greenPhases: [],
       ring: onRing?.ring,
       ringShares: [],
+      ringStops: [],
     });
     connectorsFromLane.set(inLane, [...(connectorsFromLane.get(inLane) ?? []), idx]);
     const key = movementKey(from.id, to.id);
@@ -156,12 +159,13 @@ export function buildNetwork(scenario: Scenario): Network {
 
   assignSignalPhases(scenario, connectors);
   findConflicts(scenario, legs, connectors, side, rb);
+  const stops = rb && scenario.control.type === 'signals' ? ringStops(rb, connectors) : [];
 
   const crosswalks = buildCrosswalks(scenario, legs, connectors);
 
   const corners = rb ? roundaboutCorners(rb, legs, side) : buildCorners(legs, side);
 
-  return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes, corners, roundabout: rb };
+  return { scenario, legs, lanes, connectors, crosswalks, connectorsFromLane, movementLanes, corners, roundabout: rb, ringStops: stops };
 }
 
 /** Each leg's flyover partner, for pairs where both legs exist. */
@@ -379,9 +383,14 @@ function findConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, conne
         b.siblings.push({ other: i, until: closeStretch(a.path, b.path)?.[1] ?? 0 });
         continue;
       }
+      if (roundabout && a.ring && b.ring && a.ring.lane === b.ring.lane) {
+        // In one ring lane, the rules come from its structure rather than from how close paths come.
+        ringRelations(a, b);
+        continue;
+      }
+
       if (roundabout && a.ring && b.ring) {
-        // On the ring, the rules come from its structure rather than from how close paths come.
-        ringRelations(roundabout, a, b);
+        ringLaneConflicts(scenario, legs, a, b, side);
         continue;
       }
 
@@ -403,6 +412,60 @@ function findConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, conne
       b.conflicts.push(refB);
     }
   }
+}
+
+/**
+ * Two movements in different lanes of a two-lane ring meet where one crosses the other's lane, joining
+ * or leaving; possibly twice (an inner-lane driver crosses the outer lane both ways). Each meeting is
+ * its own conflict, and whoever is joining or leaving the ring there gives way to traffic going round.
+ */
+function ringLaneConflicts(scenario: Scenario, legs: Map<string, LegGeometry>, a: Connector, b: Connector, side: number) {
+  const stage = (c: Connector, s: number) => (s < c.ring!.start ? 'joining' : s > c.ring!.start + c.ring!.length ? 'leaving' : 'round');
+  const sa = closeStretches(a.path, b.path);
+  const sb = closeStretches(b.path, a.path);
+  const merge = a.outLane === b.outLane;
+  for (const [aStart, aEnd] of sa) {
+    // The matching stretch on b: the one passing nearest this one's middle.
+    const mid = a.path.pointAt((aStart + aEnd) / 2);
+    const match = sb.reduce<[number, number] | null>((best, r) => {
+      const d = (x: [number, number]) => dist(b.path.pointAt((x[0] + x[1]) / 2), mid);
+      return !best || d(r) < d(best) ? r : best;
+    }, null);
+    if (!match) continue;
+    const [bStart] = match;
+    const pa = stage(a, aStart);
+    const pb = stage(b, bStart);
+    // Leaving into the same lane: shared from where they meet to the end.
+    const sameExit = merge && pa === 'leaving' && pb === 'leaving';
+    const ends = sameExit ? [a.path.length, b.path.length] : [aEnd, match[1]];
+    const aYields = pa !== pb && (pa === 'round' || pb === 'round') ? pb === 'round' : aYieldsToB(scenario, legs, a, b, side);
+    const kind = sameExit ? 'merge' : 'cross';
+    a.conflicts.push({ other: b.idx, s: aStart, sEnd: ends[0]!, sOther: bStart, sOtherEnd: ends[1]!, kind, yields: aYields });
+    b.conflicts.push({ other: a.idx, s: bStart, sEnd: ends[1]!, sOther: aStart, sOtherEnd: ends[0]!, kind, yields: !aYields });
+  }
+}
+
+/** Every separate stretch of p (as arc lengths) that runs within PROXIMITY of q. */
+function closeStretches(p: Polyline, q: Polyline): Array<[number, number]> {
+  const out: Array<[number, number]> = [];
+  let first = -1;
+  let last = -1;
+  const flush = () => {
+    if (first < 0) return;
+    out.push([p.cumulative[Math.max(0, first - 1)]!, p.cumulative[Math.min(p.points.length - 1, last + 1)]!]);
+    first = -1;
+  };
+  for (let i = 0; i < p.points.length; i++) {
+    const pt = p.points[i]!;
+    let best = Infinity;
+    for (let j = 0; j < q.points.length - 1; j++) best = Math.min(best, distToSegment(pt, q.points[j]!, q.points[j + 1]!));
+    if (best < PROXIMITY) {
+      if (first < 0) first = i;
+      last = i;
+    } else flush();
+  }
+  flush();
+  return out;
 }
 
 /** The stretch of p (as arc lengths) that runs within PROXIMITY of q, or null if they never get that close. */

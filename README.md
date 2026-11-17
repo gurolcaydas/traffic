@@ -9,7 +9,7 @@ Underneath is a real traffic simulation: car-following, gap acceptance, signal p
 ## Features
 
 - **Six puzzle levels.** Each gives you a jammed junction, a budget and some limits: shops that block widening, a building on a corner, crossings that must stay. Your design is scored on average delay, from one to three stars.
-- **Sandbox.** Build any junction with 2 to 6 roads at any angle and 1 to 4 lanes each way. Choose the control: yield to the right, a major road, traffic lights or a roundabout. On a roundabout, drivers can also make U-turns.
+- **Sandbox.** Build any junction with 2 to 6 roads at any angle and 1 to 4 lanes each way. Choose the control: yield to the right, a major road, traffic lights, a roundabout, or a Turkish-style roundabout with traffic lights. On a lit roundabout, left turners go round the island in the inner lane and wait at lights on the ring. On either kind of roundabout, drivers can also make U-turns.
 - **Live editing.** You can change the following without restarting the traffic:
   - signal plans
   - turn bans
@@ -19,7 +19,7 @@ Underneath is a real traffic simulation: car-following, gap acceptance, signal p
 - **Real junctions.** Search a place by name, coordinates or an openstreetmap.org link. The roads around it are imported from OpenStreetMap, with:
   - lane counts
   - one-way streets
-  - traffic lights and roundabouts
+  - traffic lights and roundabouts (a roundabout with lights becomes a lit roundabout)
   - crossings
   - which side people drive on
 - **Fair test.** Compares two designs on exactly the same random traffic over several runs, and gives every difference with a 95% confidence interval.

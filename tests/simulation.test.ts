@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Scenario } from '../src/core/types';
+import type { ControlSpec, Scenario } from '../src/core/types';
 import { overlappingVehicles, pedestrianStrikes } from '../src/sim/safety';
 import { Simulation } from '../src/sim/simulation';
-import { stateFor } from '../src/sim/signals';
+import { ringStopState, stateFor } from '../src/sim/signals';
 import { crossroad, twoPhaseSignals } from '../src/scenarios/templates';
 import { DEFAULT_SETUP, buildScenario, defaultDemand } from '../src/scenarios/setup';
 
@@ -457,5 +457,60 @@ describe('Roundabouts', () => {
       expect(c.arrived).toBe(c.exited + c.onMap + c.backlog + c.diverted + c.removed);
     }
     expect(sim.getMetrics().gridlock).toBe(false);
+  }, 20000);
+});
+
+describe('Signalised roundabouts', () => {
+  const lit = (): ControlSpec => {
+    const c = twoPhaseSignals(25);
+    return c.type === 'signals' ? { ...c, ring: true } : c;
+  };
+  const litRing = (opts: Parameters<typeof crossroad>[0] = {}): Scenario => crossroad({ ...opts, control: lit() });
+
+  for (const [name, scenario] of [
+    ['one lane in', litRing({ vehPerHourPerLeg: 350 })],
+    ['two lanes in, signalised crossings', litRing({ vehPerHourPerLeg: 400, lanes: 2, crosswalks: 'signal', pedPerHourPerCrosswalk: 100 })],
+    ['left-hand', litRing({ vehPerHourPerLeg: 350, driveSide: 'left' })],
+    ['T-junction', litRing({ vehPerHourPerLeg: 300, angles: [0, 180, 270] })],
+  ] as const) {
+    it(`runs collision-free without locking up: ${name}`, () => {
+      const { sim, collisions, strikes } = runChecked(scenario, 900);
+      expect(collisions).toBe(0);
+      expect(strikes).toBe(0);
+      const m = sim.getMetrics();
+      expect(m.completed).toBeGreaterThan(100);
+      expect(m.gridlockSeen).toBe(false);
+    }, 30000);
+  }
+
+  it('sends far-side turners round the island in the inner lane, and holds them at red ring lights', () => {
+    const sim = new Simulation(litRing({ vehPerHourPerLeg: 350 }));
+    const net = sim.network;
+    for (const c of net.connectors) expect(c.ring!.lane).toBe(c.turn === 'far' ? 1 : 0);
+    expect(net.ringStops.length).toBe(4);
+    let heldAtRed = 0;
+    for (let i = 0; i < 120; i++) {
+      sim.run(5);
+      for (const v of sim.vehicles) {
+        const conn = net.connectors[v.connector]!;
+        if (v.seg !== 1 || v.v > 0.1) continue;
+        const next = conn.ringStops.find((r) => r.s > v.s);
+        if (next && next.s - v.s < 4 && ringStopState(sim.clock, net.ringStops[next.stop]!.entryPhases) === 'red') heldAtRed++;
+      }
+    }
+    expect(heldAtRed).toBeGreaterThan(0);
+  }, 20000);
+
+  it('can be switched to and from live', () => {
+    const sim = new Simulation(crossroad({ vehPerHourPerLeg: 350, control: { type: 'roundabout' } }));
+    sim.run(120);
+    for (const control of [lit(), { type: 'roundabout' as const }, lit()]) {
+      const next = structuredClone(sim.scenario);
+      next.control = control;
+      sim.applyScenario(next);
+      sim.run(300);
+      const c = sim.counts();
+      expect(c.arrived).toBe(c.exited + c.onMap + c.backlog + c.diverted + c.removed);
+    }
   }, 20000);
 });

@@ -1,27 +1,37 @@
-// One-lane roundabouts. Each movement is drawn as one path: an entry curve onto the ring, an arc
-// round it, and an exit curve off it. Instead of discovering conflicts from how close paths come,
+// Roundabouts. Each movement is drawn as one path: an entry curve onto the ring, an arc round it,
+// and an exit curve off it. A plain roundabout has one ring lane; a signalised one has two, the inner
+// lane for drivers going round the island (far-side turns and U-turns). Instead of discovering conflicts from how close paths come,
 // the ring's rules follow from its structure: movements sharing a stretch of ring follow each other,
 // and a movement joining the ring gives way to every movement already circulating past that point.
 import { Polyline, add, perpLeft, scale, type Vec2 } from '../core/geometry';
 import { DEFAULTS, type Scenario } from '../core/types';
-import type { Connector, LegGeometry, RoundaboutGeometry } from './network';
+import type { Connector, LegGeometry, RingStop, RoundaboutGeometry } from './network';
 
 const TAU = Math.PI * 2;
 const mod = (x: number, m: number) => ((x % m) + m) % m;
 
 /** Width of the circulating carriageway: one generous lane. */
 const RING_WIDTH = 5.5;
+/** Width of each lane of a two-lane (signalised) ring: wide enough that cars in the two lanes never scrape. */
+const RING_LANE = 4;
 /** Paths closer than this to the ring's centreline are alongside it (as in the plain-junction conflicts). */
 const ALONGSIDE = 2.6;
 /** Raised splitter island between each leg's entry and exit lanes. */
 export const SPLITTER_WIDTH = 2.5;
 
+/** Smallest ring radius, m, for a signalised roundabout: room for a few cars between stop lines. */
+const SIGNALISED_MIN_RADIUS = 40;
+
 /** Ring arc, m, that must separate one leg's entry from the next leg's exit. */
 const MIN_NODE_GAP = 6;
 
-function makeGeometry(radius: number, direction: number): RoundaboutGeometry {
-  return { radius, ringWidth: RING_WIDTH, islandRadius: radius - RING_WIDTH / 2, outerRadius: radius + RING_WIDTH / 2, direction };
+function makeGeometry(radius: number, direction: number, lanes: number): RoundaboutGeometry {
+  const ringWidth = lanes === 2 ? 2 * RING_LANE : RING_WIDTH;
+  return { radius, ringWidth, islandRadius: radius - ringWidth / 2, outerRadius: radius + ringWidth / 2, direction, lanes };
 }
+
+/** Radius of a ring lane's centreline: lane 0 is the outer lane, 1 the inner. */
+export const laneRadius = (rb: RoundaboutGeometry, lane: number) => (rb.lanes === 2 ? rb.radius + (lane === 0 ? 1 : -1) * (RING_LANE / 2) : rb.radius);
 
 /**
  * The smallest ring (from a sensible minimum) on which every leg's entry joins well before the
@@ -29,6 +39,7 @@ function makeGeometry(radius: number, direction: number): RoundaboutGeometry {
  */
 export function roundaboutGeometry(scenario: Scenario): RoundaboutGeometry {
   const direction = scenario.driveSide === 'right' ? 1 : -1;
+  const lanes = scenario.control.type === 'signals' ? 2 : 1;
   const maxLanes = Math.max(1, ...scenario.legs.map((l) => Math.max(l.lanesIn, l.lanesOut)));
   const legs = [...scenario.legs].sort((a, b) => direction * (mod(a.angle, 360) - mod(b.angle, 360)));
   const w = (l: (typeof legs)[number]) => l.laneWidth ?? DEFAULTS.laneWidth;
@@ -41,8 +52,10 @@ export function roundaboutGeometry(scenario: Scenario): RoundaboutGeometry {
     const r = (s0 * s0 + offset * offset - rb.radius ** 2) / (2 * (rb.radius - offset));
     return Math.atan2(offset + r, s0);
   };
-  for (let radius = 12 + 2.2 * maxLanes; radius < 80; radius += 1) {
-    const rb = makeGeometry(radius, direction);
+  // A signalised ring stores the traffic held at its stop lines, so it is built bigger.
+  const smallest = Math.max(12 + 2.2 * maxLanes, scenario.control.type === 'signals' ? SIGNALISED_MIN_RADIUS : 0);
+  for (let radius = smallest; radius < 80; radius += 1) {
+    const rb = makeGeometry(radius, direction, lanes);
     const ok = legs.every((a, i) => {
       const b = legs[(i + 1) % legs.length]!;
       if (a === b) return true;
@@ -53,12 +66,12 @@ export function roundaboutGeometry(scenario: Scenario): RoundaboutGeometry {
     });
     if (ok) return rb;
   }
-  return makeGeometry(80, direction);
+  return makeGeometry(80, direction, lanes);
 }
 
 
-/** Ring coordinate (arc length in the direction of travel) of the point at angle θ. */
-const ringCoord = (rb: RoundaboutGeometry, theta: number) => rb.radius * mod(rb.direction * theta, TAU);
+/** Ring coordinate (arc length in the direction of travel, along a circle of radius r) of the point at angle θ. */
+const ringCoord = (rb: RoundaboutGeometry, theta: number, r: number) => r * mod(rb.direction * theta, TAU);
 
 /** Distance from the centre to the give-way line: far enough out for a gentle entry curve. */
 export const entryDistance = (rb: RoundaboutGeometry) => rb.outerRadius + 6;
@@ -89,28 +102,29 @@ function tangentArc(rb: RoundaboutGeometry, p: Vec2, n: Vec2, circle = rb.radius
   return { points, theta };
 }
 
-/** Arc length along `line` to the first point within ALONGSIDE of the ring's centreline. */
-function firstAlongside(rb: RoundaboutGeometry, line: Polyline): number {
+/** Arc length along `line` to the first point within ALONGSIDE of a ring lane's centreline (radius r). */
+function firstAlongside(line: Polyline, r: number): number {
   for (let i = 0; i < line.points.length; i++) {
     const p = line.points[i]!;
-    if (Math.abs(Math.hypot(p.x, p.y) - rb.radius) < ALONGSIDE) return line.cumulative[i]!;
+    if (Math.abs(Math.hypot(p.x, p.y) - r) < ALONGSIDE) return line.cumulative[i]!;
   }
   return line.length;
 }
 
-/** Entry arc + ring arc + exit arc for one movement, all tangent where they meet. */
-export function ringPath(rb: RoundaboutGeometry, from: LegGeometry, inPath: Polyline, to: LegGeometry, outPath: Polyline) {
+/** Entry arc + ring arc + exit arc for one movement, all tangent where they meet, on ring lane `lane`. */
+export function ringPath(rb: RoundaboutGeometry, from: LegGeometry, inPath: Polyline, to: LegGeometry, outPath: Polyline, lane = 0) {
   const d = rb.direction;
+  const r = laneRadius(rb, lane);
   // Entry bends towards the curb side of the inbound lanes; the exit towards the curb side of the outbound ones.
-  const entry = tangentArc(rb, inPath.pointAt(inPath.length), from.inNormal);
-  const exitRev = tangentArc(rb, outPath.pointAt(0), scale(to.inNormal, -1));
+  const entry = tangentArc(rb, inPath.pointAt(inPath.length), from.inNormal, r);
+  const exitRev = tangentArc(rb, outPath.pointAt(0), scale(to.inNormal, -1), r);
   const exit = [...exitRev.points].reverse();
-  const at = (theta: number): Vec2 => ({ x: rb.radius * Math.cos(theta), y: rb.radius * Math.sin(theta) });
+  const at = (theta: number): Vec2 => ({ x: r * Math.cos(theta), y: r * Math.sin(theta) });
 
   // Round the ring, always in the direction of travel.
   let sweep = mod(d * (exitRev.theta - entry.theta), TAU);
   if (sweep < 0.2) sweep += TAU; // never a zero-length lap
-  const steps = Math.max(4, Math.ceil((rb.radius * sweep) / 1.2));
+  const steps = Math.max(4, Math.ceil((r * sweep) / 1.2));
   const arc: Vec2[] = [];
   for (let i = 1; i < steps; i++) arc.push(at(entry.theta + (d * sweep * i) / steps));
 
@@ -121,23 +135,25 @@ export function ringPath(rb: RoundaboutGeometry, from: LegGeometry, inPath: Poly
   return {
     path,
     ring: {
-      entry: ringCoord(rb, entry.theta),
-      length: rb.radius * sweep,
+      lane,
+      radius: r,
+      entry: ringCoord(rb, entry.theta, r),
+      length: r * sweep,
       start,
-      joinZone: start - firstAlongside(rb, entryLine),
+      joinZone: start - firstAlongside(entryLine, r),
       // Measured from the lane end back towards the ring, so subtract to get "from the ring outwards".
-      leaveZone: exitLine.length - firstAlongside(rb, new Polyline([...exit].reverse())),
+      leaveZone: exitLine.length - firstAlongside(new Polyline([...exit].reverse()), r),
     },
   };
 }
 
 /**
- * The ring's rules between two movements from different entry lanes:
+ * The ring's rules between two movements from different entry lanes, in the same ring lane:
  * shared stretches of ring become car-following, and joining the ring where the other is already
  * circulating means giving way to it.
  */
-export function ringRelations(rb: RoundaboutGeometry, a: Connector, b: Connector) {
-  const C = TAU * rb.radius;
+export function ringRelations(a: Connector, b: Connector) {
+  const C = TAU * a.ring!.radius;
   const A = a.ring!;
   const B = b.ring!;
 
@@ -160,13 +176,14 @@ export function ringRelations(rb: RoundaboutGeometry, a: Connector, b: Connector
     a.ringShares.push({
       other: b.idx,
       from: A.start + lo - (bJoinsHere ? B.joinZone : 0),
-      to: sameExit ? a.path.length : A.start + hi + (bLeavesHere ? B.leaveZone : 0),
+      // Peeling off behind a car that carries on, it's still in the way until we're clear of the ring.
+      to: sameExit ? a.path.length : A.start + hi + Math.max(bLeavesHere ? B.leaveZone : 0, aLeavesHere ? A.leaveZone : 0),
       offset,
     });
     b.ringShares.push({
       other: a.idx,
       from: A.start + lo + offset - (aJoinsHere ? A.joinZone : 0),
-      to: sameExit ? b.path.length : A.start + hi + offset + (aLeavesHere ? A.leaveZone : 0),
+      to: sameExit ? b.path.length : A.start + hi + offset + Math.max(aLeavesHere ? A.leaveZone : 0, bLeavesHere ? B.leaveZone : 0),
       offset: -offset,
     });
   }
@@ -196,6 +213,69 @@ export function ringRelations(rb: RoundaboutGeometry, a: Connector, b: Connector
     inner.conflicts.push({ other: curb.idx, s: 0, sEnd: I.start + 3, sOther: 0, sOtherEnd: K.start + 3, kind: 'merge', yields: true });
     curb.conflicts.push({ other: inner.idx, s: 0, sEnd: K.start + 3, sOther: 0, sOtherEnd: I.start + 3, kind: 'merge', yields: false });
   }
+}
+
+/** Gap, m, between a ring stop line and where circulating traffic first meets the entering traffic. */
+const RING_STOP_GAP = 1.5;
+
+/**
+ * A signalised roundabout's stop lines: one on the ring just before each leg's entry, far enough back
+ * that circulating traffic held there is clear of every path the entering traffic takes. Each movement
+ * that drives past a line is told where along its path it is.
+ */
+export function ringStops(rb: RoundaboutGeometry, connectors: Connector[]): RingStop[] {
+  const onRing = connectors.filter((c) => c.ring);
+  const legs = [...new Set(onRing.map((c) => c.from))];
+  /** Angle round the ring in the direction of travel. */
+  const angleOf = (p: Vec2) => mod(rb.direction * Math.atan2(p.y, p.x), TAU);
+  /** How far along c's path (front bumper) it is at ring angle `angle`, if it drives past there. */
+  const along = (c: Connector, angle: number) => {
+    const R = c.ring!;
+    const x = R.radius * mod(angle - R.entry / R.radius, TAU);
+    return x > 0.5 && x < R.length - 0.5 ? R.start + x : null;
+  };
+  const passes = (c: Connector, leg: string) => c.from !== leg && c.to !== leg; // leaving there means peeling off first
+
+  const stops: RingStop[] = legs.map((leg, idx) => {
+    const entries = onRing.filter((c) => c.from === leg);
+    // Start where this leg's entering traffic reaches the ring's carriageway...
+    const reach = entries.map((c) => {
+      const i = c.path.points.findIndex((p) => Math.hypot(p.x, p.y) < rb.outerRadius + 0.5);
+      return angleOf(c.path.points[Math.max(0, i)]!);
+    });
+    const a0 = reach[0]!;
+    let angle = a0 + Math.min(...reach.map((a) => mod(a - a0 + Math.PI, TAU) - Math.PI));
+    // ...then move back until nobody waiting there stands where they would meet it.
+    for (const c of onRing) {
+      if (!passes(c, leg)) continue;
+      for (const k of c.conflicts) {
+        const s = along(c, angle);
+        if (s === null || connectors[k.other]!.from !== leg) continue;
+        // Only meetings round about here: the line can't be past them, nor are far ones its business.
+        if (k.s - RING_STOP_GAP < s && k.sEnd > s - 30) angle -= (s - (k.s - RING_STOP_GAP)) / c.ring!.radius;
+      }
+    }
+    angle = mod(angle, TAU);
+    const theta = rb.direction * angle;
+    const phases = [...new Set(entries.flatMap((c) => c.greenPhases))].sort((a, b) => a - b);
+    return {
+      idx,
+      leg,
+      angle,
+      point: { x: rb.radius * Math.cos(theta), y: rb.radius * Math.sin(theta) },
+      heading: { x: -rb.direction * Math.sin(theta), y: rb.direction * Math.cos(theta) },
+      entryPhases: phases,
+    };
+  });
+  for (const c of onRing) {
+    for (const stop of stops) {
+      if (!passes(c, stop.leg)) continue;
+      const s = along(c, stop.angle);
+      if (s !== null) c.ringStops.push({ stop: stop.idx, s });
+    }
+    c.ringStops.sort((a, b) => a.s - b.s);
+  }
+  return stops;
 }
 
 /**

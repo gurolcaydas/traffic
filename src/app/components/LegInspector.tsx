@@ -1,5 +1,5 @@
 import { t } from '../../core/i18n';
-import type { LegSpec } from '../../core/types';
+import { hasRing, type LegSpec } from '../../core/types';
 import { legColor } from '../../render/theme';
 import { crossingOf, setCrossing, toggleBanned, toggleMajor, type CrossingChoice } from '../../scenarios/edit';
 import { canRemoveLeg, removeLeg } from '../../scenarios/shape';
@@ -20,7 +20,7 @@ export function LegInspector() {
 
   const others = scenario.legs.filter((l) => l.id !== leg.id);
   // On a roundabout drivers can also go all the way round, back onto this leg.
-  const turns = scenario.control.type === 'roundabout' ? [...others, leg] : others;
+  const turns = hasRing(scenario.control) ? [...others, leg] : others;
   const banned = new Set(leg.banned ?? []);
   const isMajor = scenario.control.type === 'priority' && scenario.control.major.includes(leg.id);
   const update = (label: string, change: (l: LegSpec) => void) =>

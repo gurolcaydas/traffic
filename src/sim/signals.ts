@@ -4,6 +4,8 @@ export type SignalState = 'green' | 'amber' | 'red';
 
 export interface SignalClock {
   phase: number;
+  /** The phase after this one. */
+  next: number;
   stage: 'green' | 'amber' | 'allRed';
   /** Seconds left in the current stage. */
   remaining: number;
@@ -55,7 +57,7 @@ export class SignalController {
 
   clock(): SignalClock | null {
     if (this.control.type !== 'signals' || this.control.phases.length === 0) return null;
-    return { phase: this.phase, stage: this.stage, remaining: this.duration() - this.elapsed };
+    return { phase: this.phase, next: (this.phase + 1) % this.control.phases.length, stage: this.stage, remaining: this.duration() - this.elapsed };
   }
 
   private duration(): number {
@@ -73,6 +75,17 @@ export function stateFor(clock: SignalClock | null, greenPhases: number[]): Sign
   if (clock.stage === 'green') return 'green';
   if (clock.stage === 'amber') return 'amber';
   return 'red';
+}
+
+/**
+ * A signalised roundabout's ring stop line before a leg's entry: red while that entry has green,
+ * clearing (amber, then red) before it gets green, and green the rest of the time.
+ */
+export function ringStopState(clock: SignalClock | null, entryPhases: number[]): SignalState {
+  if (!clock) return 'green';
+  if (entryPhases.includes(clock.phase)) return 'red';
+  if (clock.stage !== 'green' && entryPhases.includes(clock.next)) return clock.stage === 'amber' ? 'amber' : 'red';
+  return 'green';
 }
 
 /** Signal for a movement; slip lanes and flyovers are not signalised. */

@@ -28,7 +28,7 @@ export interface Rules {
   crossingRequired: (leg: string) => boolean;
 }
 
-const ALL: ControlChoice[] = ['right', 'major', 'signals', 'roundabout'];
+const ALL: ControlChoice[] = ['right', 'major', 'signals', 'roundabout', 'signalRoundabout'];
 
 export function rulesFor(level: Level | null): Rules {
   if (!level) {

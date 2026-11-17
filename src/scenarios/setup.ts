@@ -2,7 +2,7 @@ import { t } from '../core/i18n';
 import type { ControlSpec, DriveSide, LegSpec, Scenario, SignalPhase } from '../core/types';
 
 export type Shape = 'cross' | 'skewed' | 't' | 'y' | 'five' | 'six';
-export type ControlChoice = 'right' | 'major' | 'signals' | 'roundabout';
+export type ControlChoice = 'right' | 'major' | 'signals' | 'roundabout' | 'signalRoundabout';
 export type CrosswalkChoice = 'none' | 'zebra' | 'signal';
 
 /** The knobs the sandbox exposes. Everything else about the scenario is derived. */
@@ -108,6 +108,7 @@ export function buildScenario(setup: Setup, demand: Scenario['demand'], seed = 1
 function controlFor(setup: Setup, legs: LegSpec[]): ControlSpec {
   if (setup.control === 'right') return { type: 'priority', major: [] };
   if (setup.control === 'roundabout') return { type: 'roundabout' };
+  if (setup.control === 'signalRoundabout') return { type: 'signals', ring: true, phases: autoSignalPlan(legs, setup.green) };
   if (setup.control === 'major') {
     // The straightest pair of legs forms the major road.
     const [a, b] = straightestPair(legs);

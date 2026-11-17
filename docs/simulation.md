@@ -33,6 +33,12 @@ The engine is in [`src/sim/simulation.ts`](../src/sim/simulation.ts). It runs at
   - *One lane:* several approach lanes enter single file, and all exits use the curb lane.
   - *U-turns:* only on a roundabout, where drivers go almost all the way round and leave on the leg they came in on. They use the inside approach lane, alongside the far turn, without changing how the other turns share the lanes. Without a roundabout, U-turn trips count as diverted, like a banned turn.
   - *Capacity:* about 1650 veh/h, in line with published figures for one-lane roundabouts.
+- **Roundabouts with traffic lights** (the Turkish style, as at Kızılay or Tandoğan). The control is a signal plan with `ring: true`.
+  - *Lights:* each phase gives green to whole entries. A second stop line sits on the ring just before each entry, far enough back that cars held there are clear of everyone entering. A ring light is red while its entry has green, shows amber then red just before the entry gets green, and is green the rest of the time.
+  - *Two ring lanes:* drivers going round the island (far-side turns and U-turns) use the inner lane, and everyone else the outer one, so left turners waiting at a ring light don't block traffic leaving at the next exit. Where the lanes cross, whoever is joining or leaving the ring gives way to traffic going round.
+  - *Size:* the ring is at least 40 m in radius, so there's room to queue between the lights.
+  - *Full ring:* drivers don't enter when the queue ahead on the ring reaches back to their entry; otherwise the ring can fill all the way round and lock. If an entry has green in every phase, the light before it never turns green and the ring locks, and the signal plan warns about it.
+  - *Performance:* with balanced traffic and one-lane approaches it is slower than a plain roundabout or plain signals, because left turners stop at a light on the ring as well as on the approach. Its strengths are signalised pedestrian crossings and giving each entry a fair share when one road dominates.
 - **Slip lanes and flyovers.**
   - A slip lane is an extra curb lane that peels off before the junction, curves around a corner island, and joins the next road as an added lane. It ignores the signals.
   - A flyover gives straight-through traffic its own lane on a bridge. Bridge traffic never conflicts with traffic or pedestrians below.

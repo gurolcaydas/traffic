@@ -3,7 +3,7 @@ import { fetchRoads, parsePlace, searchPlaces, type Place } from '../../osm/api'
 import { osmToScenario, type ImportResult } from '../../osm/convert';
 import { legColor } from '../../render/theme';
 import { t } from '../../core/i18n';
-import type { Scenario } from '../../core/types';
+import { hasRing, type Scenario } from '../../core/types';
 
 type Step =
   | { kind: 'search' }
@@ -139,7 +139,10 @@ export function ImportDialog({ onClose, onOpen }: { onClose: () => void; onOpen:
             <div>
               <h3>{step.result.scenario.name}</h3>
               <p className="hint">
-                {CONTROL_TEXT[step.result.scenario.control.type]()} ·{' '}
+                {hasRing(step.result.scenario.control) && step.result.scenario.control.type === 'signals'
+                  ? t('Roundabout with traffic lights', 'Işıklı dönel kavşak')
+                  : CONTROL_TEXT[step.result.scenario.control.type]()}{' '}
+                ·{' '}
                 {step.result.scenario.driveSide === 'right' ? t('drives on the right', 'sağdan akış') : t('drives on the left', 'soldan akış')} · {step.result.scenario.crosswalks.length}{' '}
                 {t('crossings', 'yaya geçidi')}
               </p>
@@ -211,7 +214,7 @@ function Sketch({ result }: { result: ImportResult }) {
   const r = 70;
   return (
     <svg className="import-sketch" viewBox="-90 -90 180 180" role="img" aria-label={t('Sketch of the roads', 'Yolların taslağı')}>
-      {result.scenario.control.type === 'roundabout' && <circle cx={0} cy={0} r={18} className="ring" />}
+      {hasRing(result.scenario.control) && <circle cx={0} cy={0} r={18} className="ring" />}
       {result.legs.map((l, i) => {
         const a = (l.angle * Math.PI) / 180;
         const lanes = Math.max(1, l.lanesIn + l.lanesOut);

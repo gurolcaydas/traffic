@@ -10,11 +10,13 @@ import {
   setControl,
   sideRoadCandidates,
   toggleBanned,
+  toggleEntryInPhase,
   toggleFlyover,
   toggleMovementInPhase,
   toggleSideRoad,
 } from '../src/scenarios/edit';
 import { crossroad } from '../src/scenarios/templates';
+import { COSTS, costItems, totalCost } from '../src/game/costs';
 
 describe('edit operations', () => {
   it('switches control and reports it back', () => {
@@ -119,5 +121,29 @@ describe('side road choices at a roundabout', () => {
     expect(sideRoadCandidates(t).map((c) => c.from)).toEqual(['1', '2', '3']);
     t.control = { type: 'roundabout' };
     expect(sideRoadCandidates(t).map((c) => c.from)).toEqual(['2', '3']);
+  });
+});
+
+describe('signalised roundabouts', () => {
+  it('keep their ring through plan presets, and cost a roundabout plus lights', () => {
+    const s = crossroad({ control: { type: 'priority', major: [] } });
+    const start = structuredClone(s);
+    setControl(s, 'signalRoundabout');
+    expect(controlChoice(s)).toBe('signalRoundabout');
+    for (const preset of ['split', 'protected', 'pairs'] as const) {
+      applyPlanPreset(s, preset);
+      expect(s.control.type === 'signals' && s.control.ring).toBe(true);
+      // Round a ring a phase lets whole entries go.
+      if (s.control.type === 'signals') for (const p of s.control.phases) for (const m of p.movements) expect(m.to).toBe('*');
+    }
+    expect(totalCost(costItems(start, s))).toBe(COSTS.roundabout + COSTS.signals);
+  });
+
+  it('switch an entry on and off in a phase', () => {
+    const s = crossroad({ control: { type: 'signals', ring: true, phases: [{ green: 20, movements: [] }] } });
+    toggleEntryInPhase(s, 0, '2');
+    expect(s.control.type === 'signals' && s.control.phases[0]!.movements).toEqual([{ from: '2', to: '*' }]);
+    toggleEntryInPhase(s, 0, '2');
+    expect(s.control.type === 'signals' && s.control.phases[0]!.movements).toEqual([]);
   });
 });

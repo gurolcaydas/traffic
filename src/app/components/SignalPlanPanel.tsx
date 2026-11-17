@@ -6,6 +6,7 @@ import {
   phaseMovements,
   removePhase,
   setPhaseGreen,
+  toggleEntryInPhase,
   toggleMovementInPhase,
   togglePedInPhase,
   type PlanPreset,
@@ -38,10 +39,12 @@ export function SignalPlanPanel() {
   const edit = useApp((s) => s.edit);
   const rules = useRules();
   if (scenario.control.type !== 'signals' || !rules.signalPlan) return null;
-  const { phases } = scenario.control;
+  const { phases, ring } = scenario.control;
   const legIndex = (id: string) => scenario.legs.findIndex((l) => l.id === id);
   const signalCrossings = scenario.crosswalks.filter((c) => c.type === 'signal');
   const cycle = phases.reduce((s, p) => s + p.green + 5, 0);
+  // On a ring, an entry that never stops means the ring lights before it never let anyone past.
+  const alwaysOpen = ring ? scenario.legs.filter((l) => phases.every((p) => p.movements.some((m) => m.from === l.id))).map((l) => l.id) : [];
 
   return (
     <section className="panel">
@@ -53,12 +56,21 @@ export function SignalPlanPanel() {
       </header>
 
       <div className="chips">
-        {PRESETS.map((p) => (
+        {PRESETS.filter((p) => !ring || p.value !== 'protected').map((p) => (
           <button key={p.value} className="chip" title={p.title()} onClick={() => edit(`${t('Signals', 'Işıklar')}: ${p.label().toLocaleLowerCase()}`, (d) => applyPlanPreset(d, p.value))}>
             {p.label()}
           </button>
         ))}
       </div>
+
+      {ring && alwaysOpen.length > 0 && (
+        <p className="alert">
+          {t(
+            `Entry ${alwaysOpen.join(', ')} has green in every phase, so the ring lights before it never turn green and the ring will lock.`,
+            `${alwaysOpen.join(', ')} girişi her fazda yeşil; önündeki iç ışıklar hiç yeşile dönmez ve dönel kavşak kilitlenir.`,
+          )}
+        </p>
+      )}
 
       {phases.map((phase, i) => {
         const moves = phaseMovements(scenario, phase);
@@ -86,7 +98,31 @@ export function SignalPlanPanel() {
               )}
             </div>
             <div className="moves">
-              {scenario.legs.map((from) => (
+              {ring && (
+                <div className="move-row">
+                  <span className="hint">{t('Entries', 'Girişler')}</span>
+                  {scenario.legs.map((leg) => {
+                    const on = phase.movements.some((m) => m.from === leg.id);
+                    return (
+                      <button
+                        key={leg.id}
+                        className={`chip tiny ${on ? 'on' : ''}`}
+                        aria-pressed={on}
+                        title={t(
+                          `Traffic from leg ${leg.id} enters; the ring lights before it hold circulating traffic`,
+                          `${leg.id} numaralı yoldan giriş serbest; önündeki iç ışıklar dönen trafiği durdurur`,
+                        )}
+                        onClick={() => edit(`${t('Phase', 'Faz')} ${i + 1}: ${on ? t(`stop entry ${leg.id}`, `${leg.id} girişini durdur`) : t(`open entry ${leg.id}`, `${leg.id} girişini aç`)}`, (d) => toggleEntryInPhase(d, i, leg.id))}
+                      >
+                        <span className="leg-badge small" style={{ background: legColor(legIndex(leg.id)) }}>
+                          {leg.id}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {!ring && scenario.legs.map((from) => (
                 <div key={from.id} className="move-row">
                   <span className="leg-badge small" style={{ background: legColor(legIndex(from.id)) }}>
                     {from.id}

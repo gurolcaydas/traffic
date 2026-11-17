@@ -1,7 +1,7 @@
 import type { Graphics } from 'pixi.js';
 import { add, scale, sub, type Vec2 } from '../core/geometry';
-import type { Connector, Lane, LegGeometry, Network } from '../network/network';
-import { connectorSignal, stateFor, type SignalClock, type SignalState } from '../sim/signals';
+import type { Connector, Lane, LegGeometry, Network, RingStop } from '../network/network';
+import { connectorSignal, ringStopState, stateFor, type SignalClock, type SignalState } from '../sim/signals';
 import type { CanvasTheme } from './theme';
 
 const LINE = 0.2; // painted line width, m (a touch bolder than real paint, for legibility)
@@ -136,6 +136,23 @@ function drawRoundaboutIslands(g: Graphics, net: Network, t: CanvasTheme) {
   g.circle(0, 0, rb.islandRadius).fill({ color: t.curb, alpha: 0.12 }).stroke({ width: CURB, color: t.curb });
   g.circle(0, 0, rb.islandRadius - 1.4).fill(t.ground).stroke({ width: CURB, color: t.curb });
 
+  if (rb.lanes === 2) {
+    // Dashed line between the two ring lanes.
+    const n = Math.round((2 * Math.PI * rb.radius) / 4);
+    for (let k = 0; k < n; k++) {
+      const a0 = (2 * Math.PI * k) / n;
+      const a1 = a0 + (2 * Math.PI) / n / 2;
+      line(g, { x: rb.radius * Math.cos(a0), y: rb.radius * Math.sin(a0) }, { x: rb.radius * Math.cos(a1), y: rb.radius * Math.sin(a1) });
+    }
+    g.stroke({ width: LINE, color: t.marking });
+    // Stop lines across the ring before each entry.
+    for (const stop of net.ringStops) {
+      const [a, b] = ringStopEnds(net, stop);
+      line(g, a, b);
+    }
+    g.stroke({ width: 0.45, color: t.marking });
+  }
+
   for (const leg of net.legs.values()) {
     const w = leg.medianWidth / 2 - 0.25;
     if (w <= 0.2) continue;
@@ -243,6 +260,13 @@ export function drawSignals(g: Graphics, net: Network, clock: SignalClock | null
       g.stroke({ width: 0.9, color: color(connectorSignal(clock, c)), cap: 'round' });
     });
   }
+  for (const stop of net.ringStops) {
+    // Just behind the ring's stop line, like the bars on the approaches.
+    const back = scale(stop.heading, -0.6);
+    const [a, b] = ringStopEnds(net, stop, 0.25);
+    line(g, add(a, back), add(b, back));
+    g.stroke({ width: 0.9, color: color(ringStopState(clock, stop.entryPhases)), cap: 'round' });
+  }
   for (const cw of net.crosswalks) {
     if (cw.type !== 'signal') continue;
     const state = stateFor(clock, cw.greenPhases);
@@ -289,6 +313,13 @@ function drawArrow(g: Graphics, net: Network, lane: Lane, turns: Connector[], t:
     }
   }
   g.stroke({ width: 0.3, color: t.marking, alpha: 0.9, cap: 'round', join: 'round' });
+}
+
+/** The ends of a ring stop line, across the circulating carriageway (inset by `inset`). */
+function ringStopEnds(net: Network, stop: RingStop, inset = 0): [Vec2, Vec2] {
+  const rb = net.roundabout!;
+  const radial = scale(stop.point, 1 / rb.radius);
+  return [scale(radial, rb.islandRadius + 0.2 + inset), scale(radial, rb.outerRadius - 0.2 - inset)];
 }
 
 function giveWay(g: Graphics, leg: LegGeometry, from: number, to: number, t: CanvasTheme) {
