@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getLang, t } from '../../core/i18n';
+import { readShared, shareHash, sharedPayload } from '../../scenarios/share';
 import { deleteDesign, designFile, listDesigns, parseScenario, saveDesign, type SavedDesign } from '../../scenarios/storage';
 import { useRules } from '../levelRules';
 import { useApp } from '../store';
@@ -16,6 +17,27 @@ export function DesignsPanel() {
   const fileInput = useRef<HTMLInputElement>(null);
   // A design saved from the "unsaved changes" question shows up here too.
   useEffect(() => setDesigns(listDesigns()), [savedDesign]);
+  // Open a design from a shared link, on page load or when a link is pasted into this tab.
+  useEffect(() => {
+    const openFromHash = async () => {
+      const payload = sharedPayload(location.hash);
+      if (!payload) return;
+      // Drop the hash first, so a reload or a second effect run doesn't open the design again over later edits.
+      history.replaceState(null, '', location.pathname + location.search);
+      const parsed = await readShared(payload);
+      if (!parsed.scenario) return setMessage({ text: parsed.error ?? t('Could not read that link.', 'Bu bağlantı okunamadı.'), bad: true });
+      const n = parsed.name ?? t('Shared design', 'Paylaşılan tasarım');
+      useApp.getState().askReplace(t(`Open “${n}”`, `“${n}” aç`), () => {
+        useApp.getState().loadDesign(parsed.scenario!);
+        setName(n);
+        setMessage({ text: t(`Opened the shared design “${n}”.`, `Paylaşılan “${n}” tasarımı açıldı.`) });
+      });
+    };
+    const onHash = () => void openFromHash();
+    onHash();
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   if (rules.inLevel) return null;
 
   const save = () => {
@@ -35,6 +57,19 @@ export function DesignsPanel() {
     a.download = `${n.replace(/[^\p{L}\p{N}_-]+/gu, '-').toLocaleLowerCase()}.traffic.json`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const copyLink = async () => {
+    const n = name.trim() || t('My junction', 'Kavşağım');
+    const url = location.origin + location.pathname + (await shareHash(n, scenario));
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage({ text: t('Link copied. Anyone who opens it gets this design.', 'Bağlantı kopyalandı. Açan herkes bu tasarımı görür.') });
+    } catch {
+      // No clipboard access (an insecure page, or permission refused): leave the link in the address bar instead.
+      history.replaceState(null, '', url);
+      setMessage({ text: t('Copy the link from the address bar.', 'Bağlantıyı adres çubuğundan kopyalayın.') });
+    }
   };
 
   const importFile = async (file: File) => {
@@ -90,7 +125,10 @@ export function DesignsPanel() {
           ))}
         </ul>
       )}
-      <div className="row gap">
+      <div className="row gap design-actions">
+        <button className="btn" onClick={() => void copyLink()} title={t('Copy a link that opens this design', 'Bu tasarımı açan bir bağlantı kopyala')}>
+          {t('Copy link', 'Bağlantı kopyala')}
+        </button>
         <button className="btn" onClick={exportFile} title={t('Download this design as a file', 'Bu tasarımı dosya olarak indir')}>
           {t('Export file', 'Dışa aktar')}
         </button>

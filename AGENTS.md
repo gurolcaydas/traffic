@@ -123,9 +123,9 @@ Done:
 - trucks and buses, and varied gap acceptance
 - turn pockets and lane arrows
 - stops, CO₂, 95th-percentile queues and per-approach level of service
+- sharing a design by link ([src/scenarios/share.ts](src/scenarios/share.ts)): the design file, deflated, in the URL hash. Its first character is a format version, so keep old links opening if you change it
 
 Ideas not started:
-- **Sharing a design by link** (the planned Phase 6): a compressed scenario in the URL hash, with no server
 - **Undo/redo**
 - **Two-lane plain roundabouts** (lit roundabouts already have a two-lane ring)
 - **Splitting `simulation.ts`** into lane changing, priority and pedestrians

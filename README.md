@@ -36,7 +36,7 @@ Underneath is a real traffic simulation: car-following, gap acceptance, signal p
   - a rough CO₂ estimate per vehicle
   - the 95th-percentile queue on each approach
   - the delay in the worst 15 minutes
-- **Your designs.** Save designs in the browser, or export one to a `.traffic.json` file and import it elsewhere.
+- **Your designs.** Save designs in the browser, share one as a link, or export one to a `.traffic.json` file and import it elsewhere. A shared link carries the whole design in its `#` part, so no server is involved.
 - **Right- or left-hand traffic.** You can switch the whole junction to drive on the other side.
 - **English and Turkish.** The app follows the browser's language, and you can switch it from the top bar.
 
